@@ -2,23 +2,15 @@
   "name": "findash",
   "version": "0.1.0",
   "private": true,
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "three": "^0.160.0"
-  },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "install": "npm install --prefix frontend",
+    "dev": "concurrently \"npm run dev:fe\" \"npm run dev:be\"",
+    "dev:fe": "npm run dev --prefix frontend",
+    "dev:be": "cd backend && source venv/bin/activate && python manage.py runserver",
+    "setup": "npm i && cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
+    "build": "npm run build --prefix frontend && cd backend && source venv/bin/activate && python manage.py collectstatic --noinput"
   },
-  "eslintConfig": {
-    "extends": ["react-app"]
-  },
-  "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }
