@@ -1,88 +1,4 @@
-const NEWS = [
-  {
-    id: 1,
-    headline: "Fed signals patience on rate cuts as inflation data remains sticky",
-    source: "Reuters",
-    time: "14m ago",
-    sentiment: "negative",
-    tickers: ["SPY", "TLT"],
-  },
-  {
-    id: 2,
-    headline: "NVIDIA surpasses $3T market cap on sustained data center demand",
-    source: "Bloomberg",
-    time: "31m ago",
-    sentiment: "positive",
-    tickers: ["NVDA"],
-  },
-  {
-    id: 3,
-    headline: "Apple explores AI partnerships to accelerate on-device model capabilities",
-    source: "WSJ",
-    time: "52m ago",
-    sentiment: "positive",
-    tickers: ["AAPL"],
-  },
-  {
-    id: 4,
-    headline: "Oil futures slide as OPEC+ production agreement faces internal dissent",
-    source: "FT",
-    time: "1h ago",
-    sentiment: "negative",
-    tickers: ["USO", "XOM"],
-  },
-  {
-    id: 5,
-    headline: "Treasury yield curve steepens ahead of next week's auction schedule",
-    source: "Reuters",
-    time: "1h ago",
-    sentiment: "mixed",
-    tickers: ["TLT", "IEF"],
-  },
-  {
-    id: 6,
-    headline: "Microsoft Azure revenue growth re-accelerates, beating analyst estimates",
-    source: "Bloomberg",
-    time: "2h ago",
-    sentiment: "positive",
-    tickers: ["MSFT"],
-  },
-  {
-    id: 7,
-    headline: "Regional bank index diverges from broader financials on deposit flow data",
-    source: "FT",
-    time: "2h ago",
-    sentiment: "mixed",
-    tickers: ["KRE", "XLF"],
-  },
-];
-
-const SENTIMENT_MAP = {
-  positive: { bg: "rgba(0,210,130,0.15)", color: "#00d282" },
-  negative: { bg: "rgba(255,80,100,0.15)", color: "#ff5064" },
-  mixed: { bg: "rgba(255,180,0,0.12)", color: "#ffb800" },
-};
-
-function SentimentBadge({ s }) {
-  const { bg, color } = SENTIMENT_MAP[s];
-  return (
-    <span
-      style={{
-        background: bg,
-        color,
-        fontSize: 10,
-        fontFamily: "'JetBrains Mono', monospace",
-        padding: "2px 7px",
-        borderRadius: 3,
-        letterSpacing: "0.05em",
-        border: `1px solid ${color}30`,
-        flexShrink: 0,
-      }}
-    >
-      {s.charAt(0).toUpperCase() + s.slice(1)}
-    </span>
-  );
-}
+import { useState, useEffect } from "react";
 
 const glass = {
   background: "rgba(8, 20, 36, 0.55)",
@@ -91,7 +7,37 @@ const glass = {
   border: "1px solid rgba(0, 180, 255, 0.14)",
 };
 
+function timeAgoLabel(refreshedAt) {
+  if (!refreshedAt) return "";
+  const diff = Math.floor((Date.now() - refreshedAt) / 1000);
+  if (diff < 60) return "JUST NOW";
+  if (diff < 3600) return `REFRESHED ${Math.floor(diff / 60)}M AGO`;
+  return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
+}
+
 export default function NewsFeed() {
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshedAt, setRefreshedAt] = useState(null);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/news/")
+      .then((res) => {
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        setArticles(data);
+        setRefreshedAt(Date.now());
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <div>
       <div
@@ -119,21 +65,31 @@ export default function NewsFeed() {
             letterSpacing: "0.08em",
           }}
         >
-          REFRESHED 4M AGO
+          {loading ? "LOADING..." : error ? "OFFLINE" : timeAgoLabel(refreshedAt)}
         </span>
       </div>
 
+      {error && (
+        <p style={{ color: "#ff5064", fontFamily: "'DM Sans', sans-serif", fontSize: 14 }}>
+          Could not load news: {error}
+        </p>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        {NEWS.map((n, i) => (
-          <div
+        {articles.map((n, i) => (
+          <a
             key={n.id}
+            href={n.url}
+            target="_blank"
+            rel="noopener noreferrer"
             className="news-item"
             style={{
               ...glass,
+              textDecoration: "none",
               borderRadius:
                 i === 0
                   ? "16px 16px 8px 8px"
-                  : i === NEWS.length - 1
+                  : i === articles.length - 1
                   ? "8px 8px 16px 16px"
                   : 8,
               padding: i === 0 ? "20px 22px" : "15px 20px",
@@ -158,7 +114,6 @@ export default function NewsFeed() {
                 flexWrap: "wrap",
               }}
             >
-              <SentimentBadge s={n.sentiment} />
               <span
                 style={{
                   fontFamily: "'JetBrains Mono', monospace",
@@ -187,27 +142,27 @@ export default function NewsFeed() {
               >
                 {n.time}
               </span>
-              <div
-                style={{ marginLeft: "auto", display: "flex", gap: 5 }}
-              >
-                {n.tickers.map((t) => (
-                  <span
-                    key={t}
-                    className="tag-pill"
-                    style={{
-                      background: "rgba(0,180,255,0.09)",
-                      border: "1px solid rgba(0,180,255,0.18)",
-                      borderRadius: 4,
-                      padding: "1px 7px",
-                      fontSize: 10,
-                      fontFamily: "'JetBrains Mono', monospace",
-                      color: "rgba(0,180,255,0.75)",
-                    }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
+              {n.tickers.length > 0 && (
+                <div style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
+                  {n.tickers.map((t) => (
+                    <span
+                      key={t}
+                      className="tag-pill"
+                      style={{
+                        background: "rgba(0,180,255,0.09)",
+                        border: "1px solid rgba(0,180,255,0.18)",
+                        borderRadius: 4,
+                        padding: "1px 7px",
+                        fontSize: 10,
+                        fontFamily: "'JetBrains Mono', monospace",
+                        color: "rgba(0,180,255,0.75)",
+                      }}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <p
               style={{
@@ -219,11 +174,12 @@ export default function NewsFeed() {
                 color:
                   i === 0 ? "#eaf4ff" : "rgba(180,210,255,0.75)",
                 lineHeight: 1.45,
+                margin: 0,
               }}
             >
               {n.headline}
             </p>
-          </div>
+          </a>
         ))}
       </div>
     </div>
