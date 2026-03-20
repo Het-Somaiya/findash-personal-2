@@ -118,3 +118,6 @@ CORS_ALLOWED_ORIGINS = [
 
 # Finnhub
 FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
+
+# OpenAI
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')

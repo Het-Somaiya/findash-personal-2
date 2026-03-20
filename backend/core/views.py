@@ -11,7 +11,7 @@ from core.ticker_resolver import extract_tickers_batch
 
 CATEGORIES = ['general', 'forex', 'merger']
 MAX_PER_SOURCE = 3
-TOTAL_ARTICLES = 15
+TOTAL_ARTICLES = 10
 
 HEADLINE_BLOCKLIST = [
     'form 8', 'form 4', 'form 3', 'subscription update', 'filing',

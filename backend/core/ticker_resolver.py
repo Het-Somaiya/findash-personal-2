@@ -1,222 +1,101 @@
 """
-Full-article NER pipeline for tagging news with relevant stock tickers.
+GPT-based ticker extraction for news headlines.
 
-Pipeline:
-  1. Fetch full article text from URL (newspaper3k)
-  2. Run spaCy NER to detect ORG/PRODUCT entities
-  3. Resolve entity names to ticker symbols (Finnhub /search)
-  4. Score relevance (mention frequency + headline bonus)
-  5. Return top tickers sorted by relevance
+Sends all headlines to GPT in a single batch call, asking it to identify
+the top 4 impacted stock tickers per headline with impact scores.
 """
 
-import re
+import json
 import logging
-from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 
-import requests
-import spacy
-from newspaper import Article
+from openai import OpenAI
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# spaCy model — medium for better NER accuracy
-try:
-    nlp = spacy.load('en_core_web_md', disable=['parser', 'lemmatizer', 'textcat'])
-except OSError:
-    try:
-        nlp = spacy.load('en_core_web_sm', disable=['parser', 'lemmatizer', 'textcat'])
-    except OSError:
-        logger.warning('No spaCy model found. Run: python -m spacy download en_core_web_md')
-        nlp = None
 
-# ── Caches ──────────────────────────────────────────────────────────────
-_ticker_cache = {}      # entity name (lower) -> ticker symbol or None
-_article_cache = {}     # url -> extracted article text
+def extract_tickers_batch(articles, _api_key=None):
+    """
+    Send all article headlines to GPT and get back tickers + impact scores
+    for each headline.
 
-# ── Commodity / macro keywords (NER won't tag these as ORG) ─────────────
-COMMODITY_MAP = {
-    'oil': 'CL=F', 'crude oil': 'CL=F', 'crude': 'CL=F',
-    'brent': 'CL=F', 'opec': 'CL=F', 'petroleum': 'CL=F',
-    'gold': 'GC=F', 'bullion': 'GC=F',
-    'silver': 'SI=F', 'natural gas': 'NG=F', 'copper': 'HG=F',
-    'bitcoin': 'BTC-USD', 'ethereum': 'ETH-USD',
-    'treasury': 'TLT', 'treasuries': 'TLT',
-    'yield curve': 'TLT', 'bond yield': 'TLT',
-    'nasdaq': 'QQQ', 's&p 500': 'SPY', 's&p500': 'SPY', 'dow jones': 'DIA',
-}
+    Returns a list of ticker lists (one per article) and stores impact scores
+    for future use.
+    """
+    headlines = [a.get('headline', '') for a in articles]
 
-# Entities to ignore (geopolitical, government, generic)
-SKIP_ENTITIES = {
-    'us', 'u.s.', 'u.s', 'united states', 'america', 'eu', 'uk',
-    'china', 'iran', 'russia', 'ukraine', 'india', 'japan', 'germany',
-    'france', 'israel', 'saudi arabia', 'canada', 'australia', 'brazil',
-    'senate', 'congress', 'pentagon', 'white house', 'supreme court',
-    'fed', 'federal reserve', 'ecb', 'imf', 'world bank',
-    'sec', 'fbi', 'cia', 'nato', 'un', 'united nations',
-    'republicans', 'democrats', 'trump', 'biden',
-    'asia', 'europe', 'middle east', 'wall street',
-    'reuters', 'bloomberg', 'associated press', 'ap', 'afp',
-}
-
-HEADLINE_WEIGHT = 3   # headline mentions count 3x
-MAX_TICKERS = 4       # max tickers per article
-
-
-# ── Step 1: Fetch full article text ─────────────────────────────────────
-
-def _fetch_article_text(url):
-    """Download and parse full article text from a URL using newspaper3k."""
-    if url in _article_cache:
-        return _article_cache[url]
-
-    try:
-        article = Article(url)
-        article.download()
-        article.parse()
-        text = article.text or ''
-        _article_cache[url] = text
-        return text
-    except Exception:
-        _article_cache[url] = ''
-        return ''
-
-
-# ── Step 2: NER — detect company entities ───────────────────────────────
-
-def _extract_entities(text):
-    """Run spaCy NER and return a list of (entity_name, label) tuples."""
-    if nlp is None or not text:
+    if not headlines:
         return []
 
-    doc = nlp(text)
-    entities = []
-    for ent in doc.ents:
-        if ent.label_ in ('ORG', 'PRODUCT'):
-            name = ent.text.strip()
-            if len(name) > 1 and name.lower() not in SKIP_ENTITIES:
-                entities.append(name)
-    return entities
+    openai_key = settings.OPENAI_API_KEY
+    if not openai_key:
+        logger.error('OPENAI_API_KEY not configured')
+        return [[] for _ in articles]
 
+    # Build numbered headline list for the prompt
+    headline_list = '\n'.join(
+        f'{i + 1}. {h}' for i, h in enumerate(headlines)
+    )
 
-# ── Step 3: Company → ticker lookup ─────────────────────────────────────
+    prompt = (
+        'You are a financial analyst. Please evaluate all the headlines below '
+        'and give me an impact score on 4 stocks that are impacted by each '
+        'headline. List the stock tickers and then put the associated impact '
+        'score (a score from negative 10 to positive 10, 10 being the most '
+        'impacted) next to each ticker.\n\n'
+        'Structure this in a JSON format. I just want the stock tickers and '
+        'the impact scores for each headline.\n\n'
+        f'Headlines:\n{headline_list}\n\n'
+        'Return ONLY valid JSON in this exact format, no other text:\n'
+        '[\n'
+        '  {\n'
+        '    "headline_index": 1,\n'
+        '    "tickers": [\n'
+        '      {"ticker": "AAPL", "impact_score": 7},\n'
+        '      {"ticker": "MSFT", "impact_score": -3}\n'
+        '    ]\n'
+        '  }\n'
+        ']\n'
+    )
 
-def _search_finnhub(entity_name, api_key):
-    """Resolve a company name to a ticker via Finnhub symbol search.
-    Only returns a match if the entity name appears in the result description.
-    """
     try:
-        resp = requests.get(
-            'https://finnhub.io/api/v1/search',
-            params={'q': entity_name, 'token': api_key},
-            timeout=5,
+        client = OpenAI(api_key=openai_key)
+        response = client.chat.completions.create(
+            model='gpt-4.1',
+            messages=[
+                {'role': 'system', 'content': 'You are a financial analyst. Respond only with valid JSON.'},
+                {'role': 'user', 'content': prompt},
+            ],
+            temperature=0.2,
         )
-        resp.raise_for_status()
-        results = resp.json().get('result', [])
-        if not results:
-            return None
 
-        entity_lower = entity_name.lower()
-        for r in results:
-            symbol = r.get('symbol', '')
-            desc = r.get('description', '').lower()
+        raw = response.choices[0].message.content.strip()
 
-            # Skip foreign listings (e.g. 000869.SZ)
-            if '.' in symbol and '=' not in symbol and '-' not in symbol:
-                continue
+        # Strip markdown code fences if present
+        if raw.startswith('```'):
+            raw = raw.split('\n', 1)[1] if '\n' in raw else raw[3:]
+            if raw.endswith('```'):
+                raw = raw[:-3]
+            raw = raw.strip()
 
-            # Require entity name appears in the stock description
-            if entity_lower in desc:
-                return symbol
+        data = json.loads(raw)
 
-        return None
-    except requests.RequestException:
-        return None
+        # Build a map from headline index to ticker data
+        ticker_map = {}
+        for entry in data:
+            idx = entry.get('headline_index', 0) - 1  # convert to 0-based
+            tickers_data = entry.get('tickers', [])
+            ticker_map[idx] = [t.get('ticker', '') for t in tickers_data if t.get('ticker')]
 
+        # Return ticker lists in article order
+        results = []
+        for i in range(len(articles)):
+            results.append(ticker_map.get(i, []))
+        return results
 
-def _resolve_ticker(entity_name, api_key):
-    """Resolve entity to ticker with caching."""
-    key = entity_name.lower()
-    if key in _ticker_cache:
-        return _ticker_cache[key]
-    ticker = _search_finnhub(entity_name, api_key)
-    _ticker_cache[key] = ticker
-    return ticker
-
-
-# ── Step 4 & 5: Relevance scoring + attach tickers ─────────────────────
-
-def extract_tickers(headline, summary, url, api_key):
-    """
-    Full pipeline: fetch article → NER → ticker lookup → relevance score → top tickers.
-
-    Returns list of ticker strings, e.g. ['NFLX', 'CL=F']
-    """
-    tickers = []
-    seen = set()
-
-    # ── Commodity keywords (checked against all available text) ──
-    full_text = _fetch_article_text(url) if url else ''
-    all_text = f'{headline}. {summary}. {full_text}'
-    all_text_lower = all_text.lower()
-
-    for keyword, ticker in COMMODITY_MAP.items():
-        if keyword in all_text_lower and ticker not in seen:
-            tickers.append(ticker)
-            seen.add(ticker)
-
-    # ── Explicit ticker mentions (e.g. "$AAPL", "(NVDA)") ──
-    explicit = re.findall(r'[\$\(]([A-Z]{1,5})[\)\s,]', all_text)
-    for sym in explicit:
-        if sym not in seen:
-            tickers.append(sym)
-            seen.add(sym)
-
-    # ── NER on headline, summary, and full article ──
-    headline_entities = _extract_entities(headline)
-    body_entities = _extract_entities(f'{summary}. {full_text}')
-
-    # ── Relevance scoring: count mentions, weight headline higher ──
-    entity_scores = Counter()
-    for name in headline_entities:
-        entity_scores[name] += HEADLINE_WEIGHT
-    for name in body_entities:
-        entity_scores[name] += 1
-
-    # ── Resolve top entities to tickers, sorted by score ──
-    ranked = entity_scores.most_common()
-    for entity_name, _score in ranked:
-        ticker = _resolve_ticker(entity_name, api_key)
-        if ticker and ticker not in seen:
-            tickers.append(ticker)
-            seen.add(ticker)
-        if len(tickers) >= MAX_TICKERS:
-            break
-
-    return tickers
-
-
-# ── Batch processing (for parallel article fetching) ────────────────────
-
-def extract_tickers_batch(articles, api_key):
-    """
-    Process a list of articles in parallel.
-    Each article dict must have: headline, summary, url.
-    Returns a list of ticker lists, one per article.
-    """
-    # Pre-fetch all articles in parallel
-    urls = [a.get('url', '') for a in articles]
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        pool.map(_fetch_article_text, urls)
-
-    # Now extract tickers (article text is cached)
-    results = []
-    for a in articles:
-        t = extract_tickers(
-            a.get('headline', ''),
-            a.get('summary', ''),
-            a.get('url', ''),
-            api_key,
-        )
-        results.append(t)
-    return results
+    except json.JSONDecodeError as e:
+        logger.error('Failed to parse GPT response as JSON: %s', e)
+        return [[] for _ in articles]
+    except Exception as e:
+        logger.error('GPT ticker extraction failed: %s', e)
+        return [[] for _ in articles]
