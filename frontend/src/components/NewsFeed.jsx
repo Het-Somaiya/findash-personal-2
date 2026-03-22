@@ -7,6 +7,13 @@ const glass = {
   border: "1px solid rgba(0, 180, 255, 0.14)",
 };
 
+function sentimentBackground(score) {
+  if (!score || score === 0) return undefined;
+  const intensity = Math.abs(score) / 10 * 0.15;
+  if (score > 0) return `rgba(0, 210, 130, ${intensity})`;
+  return `rgba(255, 80, 100, ${intensity})`;
+}
+
 function timeAgoLabel(refreshedAt) {
   if (!refreshedAt) return "";
   const diff = Math.floor((Date.now() - refreshedAt) / 1000);
@@ -117,9 +124,10 @@ export default function NewsFeed({ onActiveTickers, onQuotes }) {
                   ? "rgba(0,180,255,0.24)"
                   : "rgba(0,180,255,0.1)",
               background:
-                i === 0
+                sentimentBackground(n.sentiment) ||
+                (i === 0
                   ? "rgba(0,28,58,0.65)"
-                  : "rgba(8,20,36,0.45)",
+                  : "rgba(8,20,36,0.45)"),
             }}
           >
             <div

@@ -130,12 +130,12 @@ def _fetch_news():
         if len(diversified) >= TOTAL_ARTICLES:
             break
 
-    ticker_lists = extract_tickers_batch(diversified, api_key)
+    gpt_results = extract_tickers_batch(diversified, api_key)
 
     # Collect all unique tickers and fetch quotes in parallel
     all_tickers = set()
-    for tickers in ticker_lists:
-        all_tickers.update(tickers)
+    for result in gpt_results:
+        all_tickers.update(result['tickers'])
 
     quotes = {}
     if all_tickers:
@@ -148,13 +148,14 @@ def _fetch_news():
                 quotes[sym] = fut.result()
 
     articles = []
-    for item, tickers in zip(diversified, ticker_lists):
+    for item, result in zip(diversified, gpt_results):
         articles.append({
             'id': item.get('id'),
             'headline': _clean_headline(item.get('headline', '')),
             'source': item.get('source', ''),
             'time': _relative_time(item.get('datetime', 0)),
-            'tickers': tickers,
+            'tickers': result['tickers'],
+            'sentiment': result['sentiment'],
             'url': item.get('url', ''),
             'image': item.get('image', ''),
             'summary': item.get('summary', ''),

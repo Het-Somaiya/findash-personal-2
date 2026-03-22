@@ -41,17 +41,17 @@ def extract_tickers_batch(articles, _api_key=None):
 
     prompt = (
         'You are a financial analyst. Please evaluate all the headlines below '
-        'and give me an impact score on 4 stocks that are impacted by each '
-        'headline. List the stock tickers and then put the associated impact '
-        'score (a score from negative 10 to positive 10, 10 being the most '
-        'impacted) next to each ticker.\n\n'
-        'Structure this in a JSON format. I just want the stock tickers and '
-        'the impact scores for each headline.\n\n'
+        'and for each headline provide:\n'
+        '1. An overall sentiment score from -10 to +10 for the headline '
+        '(-10 = very bearish, +10 = very bullish, 0 = neutral).\n'
+        '2. The top 4 stocks impacted by the headline, with each stock\'s '
+        'impact score from -10 to +10.\n\n'
         f'Headlines:\n{headline_list}\n\n'
         'Return ONLY valid JSON in this exact format, no other text:\n'
         '[\n'
         '  {\n'
         '    "headline_index": 1,\n'
+        '    "sentiment": 5,\n'
         '    "tickers": [\n'
         '      {"ticker": "AAPL", "impact_score": 7},\n'
         '      {"ticker": "MSFT", "impact_score": -3}\n'
@@ -86,22 +86,24 @@ def extract_tickers_batch(articles, _api_key=None):
 
         data = json.loads(raw)
 
-        # Build a map from headline index to ticker data
-        ticker_map = {}
+        # Build a map from headline index to ticker + sentiment data
+        result_map = {}
         for entry in data:
             idx = entry.get('headline_index', 0) - 1  # convert to 0-based
             tickers_data = entry.get('tickers', [])
-            ticker_map[idx] = [t.get('ticker', '') for t in tickers_data if t.get('ticker')]
+            result_map[idx] = {
+                'tickers': [t.get('ticker', '') for t in tickers_data if t.get('ticker')],
+                'sentiment': entry.get('sentiment', 0),
+            }
 
-        # Return ticker lists in article order
         results = []
         for i in range(len(articles)):
-            results.append(ticker_map.get(i, []))
+            results.append(result_map.get(i, {'tickers': [], 'sentiment': 0}))
         return results
 
     except json.JSONDecodeError as e:
         logger.error('Failed to parse GPT response as JSON: %s', e)
-        return [[] for _ in articles]
+        return [{'tickers': [], 'sentiment': 0} for _ in articles]
     except Exception as e:
         logger.error('GPT ticker extraction failed: %s', e)
-        return [[] for _ in articles]
+        return [{'tickers': [], 'sentiment': 0} for _ in articles]
