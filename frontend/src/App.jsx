@@ -1,3 +1,4 @@
+import { useState } from "react";
 import "./index.css";
 import Navbar from "./components/Navbar";
 import TickerTape from "./components/TickerTape";
@@ -9,6 +10,9 @@ import RegisterBanner from "./components/RegisterBanner";
 import ChatBot from "./components/ChatBot";
 
 export default function App() {
+  const [activeTickers, setActiveTickers] = useState([]);
+  const [quotes, setQuotes] = useState({});
+
   return (
     <>
       {/* Fixed header elements */}
@@ -29,8 +33,8 @@ export default function App() {
           gap: 24,
         }}
       >
-        <NewsFeed />
-        <Sidebar />
+        <NewsFeed onActiveTickers={setActiveTickers} onQuotes={setQuotes} />
+        <Sidebar activeTickers={activeTickers} quotes={quotes} />
       </section>
 
       {/* Feature cards */}

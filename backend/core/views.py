@@ -75,8 +75,28 @@ def _clean_headline(headline):
     return headline
 
 
+def _fetch_quote(api_key, symbol):
+    """Fetch a single stock quote from Finnhub."""
+    try:
+        resp = requests.get(
+            'https://finnhub.io/api/v1/quote',
+            params={'symbol': symbol, 'token': api_key},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            'symbol': symbol,
+            'price': data.get('c', 0),
+            'change': data.get('d', 0),
+            'changePercent': data.get('dp', 0),
+        }
+    except requests.RequestException:
+        return {'symbol': symbol, 'price': 0, 'change': 0, 'changePercent': 0}
+
+
 def _fetch_news():
-    """Fetch news from Finnhub, extract tickers via Azure OpenAI, and cache."""
+    """Fetch news from Finnhub, extract tickers via Azure OpenAI, fetch quotes, and cache."""
     api_key = settings.FINNHUB_API_KEY
     if not api_key:
         return
@@ -112,6 +132,21 @@ def _fetch_news():
 
     ticker_lists = extract_tickers_batch(diversified, api_key)
 
+    # Collect all unique tickers and fetch quotes in parallel
+    all_tickers = set()
+    for tickers in ticker_lists:
+        all_tickers.update(tickers)
+
+    quotes = {}
+    if all_tickers:
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            quote_futures = {
+                sym: pool.submit(_fetch_quote, api_key, sym)
+                for sym in all_tickers
+            }
+            for sym, fut in quote_futures.items():
+                quotes[sym] = fut.result()
+
     articles = []
     for item, tickers in zip(diversified, ticker_lists):
         articles.append({
@@ -126,7 +161,7 @@ def _fetch_news():
         })
 
     with _cache_lock:
-        _cache['data'] = articles
+        _cache['data'] = {'articles': articles, 'quotes': quotes}
         _cache['fetched_at'] = time.time()
 
 
@@ -156,4 +191,4 @@ def market_news(request):
 
     # Cache not ready yet (server just started), fetch now
     _fetch_news()
-    return Response(_cache['data'] or [])
+    return Response(_cache['data'] or {'articles': [], 'quotes': {}})

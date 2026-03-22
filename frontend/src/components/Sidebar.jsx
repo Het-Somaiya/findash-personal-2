@@ -1,13 +1,5 @@
 import { useState } from "react";
 
-const MARKET = [
-  { label: "SPX", value: "5,842.31", change: "+0.41%", up: true },
-  { label: "NDX", value: "20,614.87", change: "+0.78%", up: true },
-  { label: "VIX", value: "14.23", change: "-3.12%", up: false },
-  { label: "DXY", value: "103.84", change: "-0.19%", up: false },
-  { label: "10Y", value: "4.31%", change: "+0.04", up: true },
-  { label: "BTC", value: "87,240", change: "+1.24%", up: true },
-];
 
 const SIGNALS = [
   { ticker: "NVDA", signal: "Options volume Z-score: 3.1", type: "FLOW" },
@@ -29,12 +21,12 @@ const glass = {
   borderRadius: 16,
 };
 
-export default function Sidebar() {
+export default function Sidebar({ activeTickers = [], quotes = {} }) {
   const [chatHint, setChatHint] = useState(true);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Market snapshot */}
+      {/* Impacted stocks from hovered headline */}
       <div style={{ ...glass, padding: 20 }}>
         <div
           style={{
@@ -45,53 +37,71 @@ export default function Sidebar() {
             marginBottom: 14,
           }}
         >
-          MARKET SNAPSHOT
+          IMPACTED STOCKS
         </div>
-        {MARKET.map((m, i) => (
-          <div
-            key={m.label}
+        {activeTickers.length > 0 ? (
+          activeTickers.map((ticker, i) => {
+            const q = quotes[ticker];
+            const price = q?.price || 0;
+            const changePct = q?.changePercent || 0;
+            const up = changePct >= 0;
+            return (
+              <div
+                key={ticker}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "9px 0",
+                  borderBottom:
+                    i < activeTickers.length - 1
+                      ? "1px solid rgba(0,180,255,0.07)"
+                      : "none",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 12,
+                    color: "rgba(180,210,255,0.45)",
+                  }}
+                >
+                  {ticker}
+                </span>
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 13,
+                      color: "rgba(220,240,255,0.85)",
+                    }}
+                  >
+                    {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10,
+                      color: up ? "#00d282" : "#ff5064",
+                    }}
+                  >
+                    {price ? `${up ? "+" : ""}${changePct.toFixed(2)}%` : ""}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <span
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "9px 0",
-              borderBottom:
-                i < MARKET.length - 1
-                  ? "1px solid rgba(0,180,255,0.07)"
-                  : "none",
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 12,
+              color: "rgba(180,210,255,0.35)",
             }}
           >
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 12,
-                color: "rgba(180,210,255,0.45)",
-              }}
-            >
-              {m.label}
-            </span>
-            <div style={{ textAlign: "right" }}>
-              <div
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 13,
-                  color: "rgba(220,240,255,0.85)",
-                }}
-              >
-                {m.value}
-              </div>
-              <div
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  color: m.up ? "#00d282" : "#ff5064",
-                }}
-              >
-                {m.change}
-              </div>
-            </div>
-          </div>
-        ))}
+            Hover over a headline to see impacted stocks
+          </span>
+        )}
       </div>
 
       {/* Top signals */}

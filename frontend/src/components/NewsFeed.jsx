@@ -15,11 +15,12 @@ function timeAgoLabel(refreshedAt) {
   return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
 }
 
-export default function NewsFeed() {
+export default function NewsFeed({ onActiveTickers, onQuotes }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshedAt, setRefreshedAt] = useState(null);
+  const [hoveredIndex, setHoveredIndex] = useState(null);
 
   useEffect(() => {
     fetch("http://localhost:8000/api/news/")
@@ -28,9 +29,14 @@ export default function NewsFeed() {
         return res.json();
       })
       .then((data) => {
-        setArticles(data);
+        const articleList = data.articles || [];
+        setArticles(articleList);
         setRefreshedAt(Date.now());
         setLoading(false);
+        if (onQuotes) onQuotes(data.quotes || {});
+        if (articleList.length > 0 && onActiveTickers) {
+          onActiveTickers(articleList[0].tickers || []);
+        }
       })
       .catch((err) => {
         setError(err.message);
@@ -83,6 +89,16 @@ export default function NewsFeed() {
             target="_blank"
             rel="noopener noreferrer"
             className="news-item"
+            onMouseEnter={() => {
+              setHoveredIndex(i);
+              if (onActiveTickers) onActiveTickers(n.tickers || []);
+            }}
+            onMouseLeave={() => {
+              setHoveredIndex(null);
+              if (onActiveTickers && articles.length > 0) {
+                onActiveTickers(articles[0].tickers || []);
+              }
+            }}
             style={{
               ...glass,
               textDecoration: "none",
