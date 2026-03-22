@@ -22,7 +22,7 @@ function timeAgoLabel(refreshedAt) {
   return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
 }
 
-export default function NewsFeed({ onActiveTickers, onQuotes, onTopStocks }) {
+export default function NewsFeed({ onActiveTickers, onQuotes, onTopStocks, onTopSignals }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -42,6 +42,7 @@ export default function NewsFeed({ onActiveTickers, onQuotes, onTopStocks }) {
         setLoading(false);
         if (onQuotes) onQuotes(data.quotes || {});
         if (onTopStocks) onTopStocks(data.topStocks || []);
+        if (onTopSignals) onTopSignals(data.topSignals || []);
       })
       .catch((err) => {
         setError(err.message);

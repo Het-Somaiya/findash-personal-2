@@ -169,8 +169,42 @@ def _fetch_news():
             'summary': item.get('summary', ''),
         })
 
+    # Build top 3 sentiment signals — most extreme headlines
+    signals = []
+    for i, (item, result) in enumerate(zip(diversified, gpt_results)):
+        top_ticker = result['tickers'][0] if result['tickers'] else None
+        max_ticker_impact = max(
+            (abs(s) for s in result['ticker_impacts'].values()), default=0
+        )
+        if top_ticker:
+            signals.append({
+                'ticker': top_ticker,
+                'sentiment': result['sentiment'],
+                'type': 'BULLISH' if result['sentiment'] > 0 else 'BEARISH',
+                'headline': _clean_headline(item.get('headline', '')),
+                'abs_sentiment': abs(result['sentiment']),
+                'max_impact': max_ticker_impact,
+                'datetime': item.get('datetime', 0),
+            })
+
+    signals.sort(key=lambda s: (s['abs_sentiment'], s['max_impact'], s['datetime']), reverse=True)
+    top_signals = [
+        {
+            'ticker': s['ticker'],
+            'type': s['type'],
+            'sentiment': s['sentiment'],
+            'headline': s['headline'],
+        }
+        for s in signals[:3]
+    ]
+
     with _cache_lock:
-        _cache['data'] = {'articles': articles, 'quotes': quotes, 'topStocks': top_stocks}
+        _cache['data'] = {
+            'articles': articles,
+            'quotes': quotes,
+            'topStocks': top_stocks,
+            'topSignals': top_signals,
+        }
         _cache['fetched_at'] = time.time()
 
 

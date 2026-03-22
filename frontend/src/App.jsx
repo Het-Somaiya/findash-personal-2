@@ -13,6 +13,7 @@ export default function App() {
   const [activeTickers, setActiveTickers] = useState(null);
   const [quotes, setQuotes] = useState({});
   const [topStocks, setTopStocks] = useState([]);
+  const [topSignals, setTopSignals] = useState([]);
 
   return (
     <>
@@ -34,8 +35,8 @@ export default function App() {
           gap: 24,
         }}
       >
-        <NewsFeed onActiveTickers={setActiveTickers} onQuotes={setQuotes} onTopStocks={setTopStocks} />
-        <Sidebar activeTickers={activeTickers} quotes={quotes} topStocks={topStocks} />
+        <NewsFeed onActiveTickers={setActiveTickers} onQuotes={setQuotes} onTopStocks={setTopStocks} onTopSignals={setTopSignals} />
+        <Sidebar activeTickers={activeTickers} quotes={quotes} topStocks={topStocks} topSignals={topSignals} />
       </section>
 
       {/* Feature cards */}

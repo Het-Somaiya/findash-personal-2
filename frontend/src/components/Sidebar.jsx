@@ -1,16 +1,9 @@
 import { useState } from "react";
 
 
-const SIGNALS = [
-  { ticker: "NVDA", signal: "Options volume Z-score: 3.1", type: "FLOW" },
-  { ticker: "SPY", signal: "IV inversion detected at 7-day expiry", type: "IV" },
-  { ticker: "AAPL", signal: "Analyst revision diverges from price", type: "SENTIMENT" },
-];
-
 const SIGNAL_COLORS = {
-  FLOW: "#00d4ff",
-  IV: "#ffb800",
-  SENTIMENT: "#c084fc",
+  BULLISH: "#00d282",
+  BEARISH: "#ff5064",
 };
 
 const glass = {
@@ -21,7 +14,7 @@ const glass = {
   borderRadius: 16,
 };
 
-export default function Sidebar({ activeTickers = null, quotes = {}, topStocks = [] }) {
+export default function Sidebar({ activeTickers = null, quotes = {}, topStocks = [], topSignals = [] }) {
   const [chatHint, setChatHint] = useState(true);
 
   const isHovering = activeTickers !== null;
@@ -121,16 +114,16 @@ export default function Sidebar({ activeTickers = null, quotes = {}, topStocks =
         >
           TOP SIGNALS TODAY
         </div>
-        {SIGNALS.map((s, i) => (
+        {topSignals.map((s, i) => (
           <div
             key={i}
             className="signal-card"
             style={{
               padding: "10px 12px",
               marginBottom: 6,
-              background: "rgba(0,180,255,0.05)",
+              background: s.type === "BULLISH" ? "rgba(0,210,130,0.05)" : "rgba(255,80,100,0.05)",
               borderRadius: 8,
-              border: "1px solid rgba(0,180,255,0.1)",
+              border: `1px solid ${s.type === "BULLISH" ? "rgba(0,210,130,0.15)" : "rgba(255,80,100,0.15)"}`,
             }}
           >
             <div
@@ -155,11 +148,12 @@ export default function Sidebar({ activeTickers = null, quotes = {}, topStocks =
                 style={{
                   fontFamily: "'JetBrains Mono', monospace",
                   fontSize: 9,
-                  color: "rgba(0,180,255,0.38)",
+                  color: SIGNAL_COLORS[s.type] || "rgba(0,180,255,0.38)",
                   letterSpacing: "0.08em",
+                  opacity: 0.6,
                 }}
               >
-                {s.type}
+                {s.type} {s.sentiment > 0 ? `+${s.sentiment}` : s.sentiment}
               </span>
             </div>
             <span
@@ -167,25 +161,13 @@ export default function Sidebar({ activeTickers = null, quotes = {}, topStocks =
                 fontFamily: "'DM Sans', sans-serif",
                 fontSize: 12,
                 color: "rgba(180,210,255,0.55)",
+                lineHeight: 1.4,
               }}
             >
-              {s.signal}
+              {s.headline}
             </span>
           </div>
         ))}
-        <div style={{ marginTop: 8, textAlign: "center" }}>
-          <span
-            className="cta-link"
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 11,
-              color: "rgba(0,180,255,0.38)",
-              cursor: "pointer",
-            }}
-          >
-            Register to set custom signal alerts →
-          </span>
-        </div>
       </div>
 
       {/* AI chatbot hint */}
