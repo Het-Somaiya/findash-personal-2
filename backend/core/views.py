@@ -1,5 +1,6 @@
 import html
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -12,6 +13,13 @@ from core.ticker_resolver import extract_tickers_batch
 CATEGORIES = ['general', 'forex', 'merger']
 MAX_PER_SOURCE = 3
 TOTAL_ARTICLES = 10
+CACHE_TTL = 300  # 5 minutes
+
+_cache_lock = threading.Lock()
+_cache = {
+    'data': None,
+    'fetched_at': 0,
+}
 
 HEADLINE_BLOCKLIST = [
     'form 8', 'form 4', 'form 3', 'subscription update', 'filing',
@@ -73,6 +81,11 @@ def market_news(request):
     if not api_key:
         return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
 
+    # Return cached response if fresh
+    with _cache_lock:
+        if _cache['data'] and (time.time() - _cache['fetched_at']) < CACHE_TTL:
+            return Response(_cache['data'])
+
     # Fetch news categories in parallel
     with ThreadPoolExecutor(max_workers=len(CATEGORIES)) as pool:
         futures = [pool.submit(_fetch_category, api_key, cat) for cat in CATEGORIES]
@@ -123,5 +136,10 @@ def market_news(request):
             'image': item.get('image', ''),
             'summary': item.get('summary', ''),
         })
+
+    # Cache the response
+    with _cache_lock:
+        _cache['data'] = articles
+        _cache['fetched_at'] = time.time()
 
     return Response(articles)

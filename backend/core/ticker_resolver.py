@@ -8,7 +8,7 @@ the top 4 impacted stock tickers per headline with impact scores.
 import json
 import logging
 
-from openai import OpenAI
+from openai import AzureOpenAI
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -27,9 +27,11 @@ def extract_tickers_batch(articles, _api_key=None):
     if not headlines:
         return []
 
-    openai_key = settings.OPENAI_API_KEY
-    if not openai_key:
-        logger.error('OPENAI_API_KEY not configured')
+    azure_key = settings.AZURE_OPENAI_API_KEY
+    azure_endpoint = settings.AZURE_OPENAI_ENDPOINT
+    azure_deployment = settings.AZURE_OPENAI_DEPLOYMENT
+    if not azure_key or not azure_endpoint:
+        logger.error('Azure OpenAI not configured')
         return [[] for _ in articles]
 
     # Build numbered headline list for the prompt
@@ -59,9 +61,13 @@ def extract_tickers_batch(articles, _api_key=None):
     )
 
     try:
-        client = OpenAI(api_key=openai_key)
+        client = AzureOpenAI(
+            api_key=azure_key,
+            azure_endpoint=azure_endpoint,
+            api_version=settings.AZURE_OPENAI_API_VERSION,
+        )
         response = client.chat.completions.create(
-            model='gpt-4.1',
+            model=azure_deployment,
             messages=[
                 {'role': 'system', 'content': 'You are a financial analyst. Respond only with valid JSON.'},
                 {'role': 'user', 'content': prompt},
