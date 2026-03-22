@@ -93,17 +93,18 @@ def extract_tickers_batch(articles, _api_key=None):
             tickers_data = entry.get('tickers', [])
             result_map[idx] = {
                 'tickers': [t.get('ticker', '') for t in tickers_data if t.get('ticker')],
+                'ticker_impacts': {t['ticker']: t.get('impact_score', 0) for t in tickers_data if t.get('ticker')},
                 'sentiment': entry.get('sentiment', 0),
             }
 
         results = []
         for i in range(len(articles)):
-            results.append(result_map.get(i, {'tickers': [], 'sentiment': 0}))
+            results.append(result_map.get(i, {'tickers': [], 'ticker_impacts': {}, 'sentiment': 0}))
         return results
 
     except json.JSONDecodeError as e:
         logger.error('Failed to parse GPT response as JSON: %s', e)
-        return [{'tickers': [], 'sentiment': 0} for _ in articles]
+        return [{'tickers': [], 'ticker_impacts': {}, 'sentiment': 0} for _ in articles]
     except Exception as e:
         logger.error('GPT ticker extraction failed: %s', e)
-        return [{'tickers': [], 'sentiment': 0} for _ in articles]
+        return [{'tickers': [], 'ticker_impacts': {}, 'sentiment': 0} for _ in articles]

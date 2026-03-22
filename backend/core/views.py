@@ -132,6 +132,14 @@ def _fetch_news():
 
     gpt_results = extract_tickers_batch(diversified, api_key)
 
+    # Aggregate absolute impact scores across all headlines for top stocks
+    from collections import defaultdict
+    impact_totals = defaultdict(float)
+    for result in gpt_results:
+        for ticker, score in result['ticker_impacts'].items():
+            impact_totals[ticker] += abs(score)
+    top_stocks = sorted(impact_totals, key=lambda t: impact_totals[t], reverse=True)[:4]
+
     # Collect all unique tickers and fetch quotes in parallel
     all_tickers = set()
     for result in gpt_results:
@@ -162,7 +170,7 @@ def _fetch_news():
         })
 
     with _cache_lock:
-        _cache['data'] = {'articles': articles, 'quotes': quotes}
+        _cache['data'] = {'articles': articles, 'quotes': quotes, 'topStocks': top_stocks}
         _cache['fetched_at'] = time.time()
 
 

@@ -10,8 +10,9 @@ import RegisterBanner from "./components/RegisterBanner";
 import ChatBot from "./components/ChatBot";
 
 export default function App() {
-  const [activeTickers, setActiveTickers] = useState([]);
+  const [activeTickers, setActiveTickers] = useState(null);
   const [quotes, setQuotes] = useState({});
+  const [topStocks, setTopStocks] = useState([]);
 
   return (
     <>
@@ -33,8 +34,8 @@ export default function App() {
           gap: 24,
         }}
       >
-        <NewsFeed onActiveTickers={setActiveTickers} onQuotes={setQuotes} />
-        <Sidebar activeTickers={activeTickers} quotes={quotes} />
+        <NewsFeed onActiveTickers={setActiveTickers} onQuotes={setQuotes} onTopStocks={setTopStocks} />
+        <Sidebar activeTickers={activeTickers} quotes={quotes} topStocks={topStocks} />
       </section>
 
       {/* Feature cards */}

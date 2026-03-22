@@ -22,7 +22,7 @@ function timeAgoLabel(refreshedAt) {
   return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
 }
 
-export default function NewsFeed({ onActiveTickers, onQuotes }) {
+export default function NewsFeed({ onActiveTickers, onQuotes, onTopStocks }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -41,9 +41,7 @@ export default function NewsFeed({ onActiveTickers, onQuotes }) {
         setRefreshedAt(Date.now());
         setLoading(false);
         if (onQuotes) onQuotes(data.quotes || {});
-        if (articleList.length > 0 && onActiveTickers) {
-          onActiveTickers(articleList[0].tickers || []);
-        }
+        if (onTopStocks) onTopStocks(data.topStocks || []);
       })
       .catch((err) => {
         setError(err.message);
@@ -102,9 +100,7 @@ export default function NewsFeed({ onActiveTickers, onQuotes }) {
             }}
             onMouseLeave={() => {
               setHoveredIndex(null);
-              if (onActiveTickers && articles.length > 0) {
-                onActiveTickers(articles[0].tickers || []);
-              }
+              if (onActiveTickers) onActiveTickers(null);
             }}
             style={{
               ...glass,

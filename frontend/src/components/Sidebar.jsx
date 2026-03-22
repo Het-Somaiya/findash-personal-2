@@ -21,12 +21,16 @@ const glass = {
   borderRadius: 16,
 };
 
-export default function Sidebar({ activeTickers = [], quotes = {} }) {
+export default function Sidebar({ activeTickers = null, quotes = {}, topStocks = [] }) {
   const [chatHint, setChatHint] = useState(true);
+
+  const isHovering = activeTickers !== null;
+  const displayTickers = isHovering ? activeTickers : topStocks;
+  const sectionTitle = isHovering ? "IMPACTED STOCKS" : "TOP MOVERS";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Impacted stocks from hovered headline */}
+      {/* Impacted stocks or top movers */}
       <div style={{ ...glass, padding: 20 }}>
         <div
           style={{
@@ -37,10 +41,10 @@ export default function Sidebar({ activeTickers = [], quotes = {} }) {
             marginBottom: 14,
           }}
         >
-          IMPACTED STOCKS
+          {sectionTitle}
         </div>
-        {activeTickers.length > 0 ? (
-          activeTickers.map((ticker, i) => {
+        {displayTickers.length > 0 ? (
+          displayTickers.map((ticker, i) => {
             const q = quotes[ticker];
             const price = q?.price || 0;
             const changePct = q?.changePercent || 0;
@@ -54,7 +58,7 @@ export default function Sidebar({ activeTickers = [], quotes = {} }) {
                   alignItems: "center",
                   padding: "9px 0",
                   borderBottom:
-                    i < activeTickers.length - 1
+                    i < displayTickers.length - 1
                       ? "1px solid rgba(0,180,255,0.07)"
                       : "none",
                 }}
