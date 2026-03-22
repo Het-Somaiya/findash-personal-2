@@ -75,28 +75,20 @@ def _clean_headline(headline):
     return headline
 
 
-@api_view(['GET'])
-def market_news(request):
+def _fetch_news():
+    """Fetch news from Finnhub, extract tickers via Azure OpenAI, and cache."""
     api_key = settings.FINNHUB_API_KEY
     if not api_key:
-        return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
+        return
 
-    # Return cached response if fresh
-    with _cache_lock:
-        if _cache['data'] and (time.time() - _cache['fetched_at']) < CACHE_TTL:
-            return Response(_cache['data'])
-
-    # Fetch news categories in parallel
     with ThreadPoolExecutor(max_workers=len(CATEGORIES)) as pool:
         futures = [pool.submit(_fetch_category, api_key, cat) for cat in CATEGORIES]
         all_items = []
         for f in futures:
             all_items.extend(f.result())
 
-    # Filter quality
     all_items = [item for item in all_items if _is_quality_article(item)]
 
-    # Deduplicate by headline
     seen = set()
     unique = []
     for item in all_items:
@@ -105,10 +97,8 @@ def market_news(request):
             seen.add(key)
             unique.append(item)
 
-    # Sort by most recent first
     unique.sort(key=lambda x: x.get('datetime', 0), reverse=True)
 
-    # Diversify: limit per source
     source_count = {}
     diversified = []
     for item in unique:
@@ -120,10 +110,8 @@ def market_news(request):
         if len(diversified) >= TOTAL_ARTICLES:
             break
 
-    # Extract tickers in batch (fetches full articles in parallel)
     ticker_lists = extract_tickers_batch(diversified, api_key)
 
-    # Format response
     articles = []
     for item, tickers in zip(diversified, ticker_lists):
         articles.append({
@@ -137,9 +125,35 @@ def market_news(request):
             'summary': item.get('summary', ''),
         })
 
-    # Cache the response
     with _cache_lock:
         _cache['data'] = articles
         _cache['fetched_at'] = time.time()
 
-    return Response(articles)
+
+def _background_refresh():
+    """Periodically refresh the cache in the background."""
+    while True:
+        try:
+            _fetch_news()
+        except Exception:
+            pass
+        time.sleep(CACHE_TTL)
+
+
+# Start background refresh thread on module load
+_refresh_thread = threading.Thread(target=_background_refresh, daemon=True)
+_refresh_thread.start()
+
+
+@api_view(['GET'])
+def market_news(request):
+    if not settings.FINNHUB_API_KEY:
+        return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
+
+    with _cache_lock:
+        if _cache['data']:
+            return Response(_cache['data'])
+
+    # Cache not ready yet (server just started), fetch now
+    _fetch_news()
+    return Response(_cache['data'] or [])
