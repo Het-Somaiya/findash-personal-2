@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { searchTickers, type TickerSuggestion } from "../lib/api";
+import { SearchPanel, ASSET_DB, type AssetData } from "./SearchPanel";
 
 const SEARCH_SUGGESTIONS = [
   "NVDA",
@@ -22,12 +23,15 @@ const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
 export function Navbar() {
-  const [query,    setQuery]    = useState("");
-  const [suggIdx,  setSuggIdx]  = useState(0);
-  const [focused,  setFocused]  = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [results,  setResults]  = useState<TickerSuggestion[]>([]);
-  const blurTimer              = useRef<ReturnType<typeof setTimeout>>();
+  const navbarRef = useRef<HTMLDivElement>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const [query,         setQuery]         = useState("");
+  const [suggIdx,       setSuggIdx]       = useState(0);
+  const [focused,       setFocused]       = useState(false);
+  const [scrolled,      setScrolled]      = useState(false);
+  const [results,       setResults]       = useState<TickerSuggestion[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
 
   // Cycle placeholder text
   useEffect(() => {
@@ -50,7 +54,18 @@ export function Navbar() {
     return () => { cancelled = true; };
   }, [query]);
 
-  const showDropdown = focused && (results.length > 0 || query === "");
+  // When a ticker is selected from the dropdown, load the asset card
+  const handleSelect = (symbol: string) => {
+    const key = symbol.toUpperCase();
+    const asset = ASSET_DB[key] ?? null;
+    setSelectedAsset(asset);
+    setQuery(symbol);
+    setFocused(false);
+    clearTimeout(blurTimer.current);
+  };
+
+  const showDropdown = focused && !selectedAsset && (results.length > 0 || query === "");
+
   const dropdownItems: TickerSuggestion[] = results.length > 0 ? results : [
     { symbol: "NVDA", name: "NVIDIA Corporation",   type: "stock", exchange: "NASDAQ" },
     { symbol: "SPY",  name: "SPDR S&P 500 ETF",     type: "etf",   exchange: "NYSE"   },
@@ -61,6 +76,7 @@ export function Navbar() {
 
   return (
     <nav
+      ref={navbarRef}
       style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
         padding: "0 32px", height: 60,
@@ -92,10 +108,15 @@ export function Navbar() {
         <span style={{
           position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)",
           color: "rgba(0,180,255,0.45)", fontSize: 14, pointerEvents: "none",
+          zIndex: 1,
         }}>⌕</span>
+
         <input
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={e => {
+            setQuery(e.target.value);
+            setSelectedAsset(null); // clear card when user starts typing again
+          }}
           onFocus={() => setFocused(true)}
           onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 160); }}
           placeholder={`Search — try "${SEARCH_SUGGESTIONS[suggIdx]}"`}
@@ -103,15 +124,19 @@ export function Navbar() {
             width: "100%", height: 37,
             paddingLeft: 36, paddingRight: 14,
             background: "rgba(255,255,255,0.05)",
-            border: focused ? "1px solid rgba(0,180,255,0.50)" : "1px solid rgba(0,180,255,0.18)",
-            boxShadow: focused ? "0 0 0 3px rgba(0,180,255,0.08)" : "none",
+            border: focused || selectedAsset
+              ? "1px solid rgba(0,180,255,0.50)"
+              : "1px solid rgba(0,180,255,0.18)",
+            boxShadow: focused || selectedAsset
+              ? "0 0 0 3px rgba(0,180,255,0.08)"
+              : "none",
             borderRadius: 10, color: "#e0f0ff",
             fontSize: 13, fontFamily: sans,
             outline: "none", transition: "border-color 0.2s, box-shadow 0.2s",
           }}
         />
 
-        {/* Dropdown */}
+        {/* Autocomplete dropdown — shown while typing, before asset is selected */}
         {showDropdown && (
           <div style={{
             position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
@@ -136,11 +161,7 @@ export function Navbar() {
                 return (
                   <button
                     key={item.symbol}
-                    onMouseDown={() => {
-                      setQuery(item.symbol);
-                      setFocused(false);
-                      clearTimeout(blurTimer.current);
-                    }}
+                    onMouseDown={() => handleSelect(item.symbol)}
                     style={{
                       width: "100%", display: "flex", alignItems: "center",
                       gap: 10, padding: "9px 14px",
@@ -173,6 +194,15 @@ export function Navbar() {
             </div>
           </div>
         )}
+
+        {/* Asset card panel — shown after a ticker is selected */}
+        {selectedAsset && (
+          <SearchPanel
+            asset={selectedAsset}
+            onClose={() => { setSelectedAsset(null); setQuery(""); }}
+            navbarRef={navbarRef}
+          />
+        )}
       </div>
 
       {/* Right nav */}
@@ -191,10 +221,11 @@ export function Navbar() {
             {l}
           </span>
         ))}
-        <span style={{
-          color: "rgba(200,225,255,0.55)", fontFamily: sans,
-          fontSize: 13, cursor: "pointer", transition: "color 0.2s",
-        }}
+        <span
+          style={{
+            color: "rgba(200,225,255,0.55)", fontFamily: sans,
+            fontSize: 13, cursor: "pointer", transition: "color 0.2s",
+          }}
           onMouseEnter={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.9)")}
           onMouseLeave={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.55)")}
         >
