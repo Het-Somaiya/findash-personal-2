@@ -1,19 +1,30 @@
 import { useState, useEffect } from "react";
-import { getNews, getMarketSnapshot, type NewsArticle, type MarketSnapshot } from "../lib/api";
+import { getNews, getMarketSnapshot, type NewsArticle, type MarketSnapshot, type BackendQuote, type TopSignal } from "../lib/api";
 
-const SIGNALS = [
+const FALLBACK_SIGNALS = [
   { ticker: "NVDA", signal: "Options volume Z-score: 3.1 — unusually elevated call buying", type: "FLOW"  },
   { ticker: "SPY",  signal: "IV inversion detected at 7-day expiry vs. 30-day baseline",    type: "IV"    },
   { ticker: "AAPL", signal: "Analyst revision direction diverges from recent price action",  type: "DRIFT" },
 ];
 
+const SIGNAL_TYPE_COLORS: Record<string, string> = {
+  FLOW: "#00d4ff",
+  IV: "#ffb800",
+  DRIFT: "#c084fc",
+  SENTIMENT: "#c084fc",
+  BULLISH: "#00d282",
+  BEARISH: "#ff5064",
+};
+
 const SNAPSHOT_SYMBOLS = ["SPX", "NDX", "SPY", "VIX", "DXY", "BTC"];
 
-const SENTIMENT_MAP = {
-  positive: { tint: "rgba(0,210,130,0.08)",  hoverTint: "rgba(0,210,130,0.13)" },
-  negative: { tint: "rgba(255,80,100,0.08)", hoverTint: "rgba(255,80,100,0.13)" },
-  mixed:    { tint: "rgba(255,180,0,0.06)",  hoverTint: "rgba(255,180,0,0.10)"  },
-};
+/** Intensity-based sentiment background using backend's numeric score (-10 to +10) */
+function sentimentBackground(score: number | null): string | undefined {
+  if (!score || score === 0) return undefined;
+  const intensity = Math.abs(score) / 10 * 0.15;
+  if (score > 0) return `rgba(0, 210, 130, ${intensity})`;
+  return `rgba(255, 80, 100, ${intensity})`;
+}
 
 const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
@@ -68,11 +79,18 @@ export function NewsAndMarket() {
   const [fromBackend,  setFromBackend]  = useState(false);
   const [refreshedAt,  setRefreshedAt]  = useState<number | null>(null);
   const [chatHint,     setChatHint]     = useState(true);
+  const [backendQuotes, setBackendQuotes] = useState<Record<string, BackendQuote>>({});
+  const [topStocks,    setTopStocks]    = useState<string[]>([]);
+  const [topSignals,   setTopSignals]   = useState<TopSignal[]>([]);
+  const [hoveredTickers, setHoveredTickers] = useState<string[] | null>(null);
 
   useEffect(() => {
-    getNews().then(({ articles: a, fromBackend: live }) => {
+    getNews().then(({ articles: a, fromBackend: live, quotes, topStocks: ts, topSignals: sig }) => {
       setArticles(a);
       setFromBackend(live);
+      setBackendQuotes(quotes);
+      setTopStocks(ts);
+      setTopSignals(sig);
       setRefreshedAt(Date.now());
       setLoading(false);
     });
@@ -131,17 +149,14 @@ export function NewsAndMarket() {
             {articles.map((n, i) => {
               const isTop = i === 0;
               const isBot = i === articles.length - 1;
-              const { tint, hoverTint } = SENTIMENT_MAP[n.sentiment];
-              const baseBg      = isTop ? "rgba(0,28,58,0.65)" : "rgba(8,20,36,0.45)";
-              const baseHoverBg = isTop ? "rgba(0,40,80,0.72)" : "rgba(0,180,255,0.06)";
-              const composedBg      = `linear-gradient(${tint},${tint}),${baseBg}`;
-              const composedHoverBg = `linear-gradient(${hoverTint},${hoverTint}),${baseHoverBg}`;
+              const baseBg = sentimentBackground(n.sentimentScore)
+                || (isTop ? "rgba(0,28,58,0.65)" : "rgba(8,20,36,0.45)");
 
               const itemStyle = {
                 ...glass,
                 borderRadius: isTop ? "16px 16px 8px 8px" : isBot ? "8px 8px 16px 16px" : 8,
                 padding: isTop ? "22px 24px" : "16px 22px",
-                background: composedBg,
+                background: baseBg,
                 borderColor: isTop ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)",
                 display: "flex" as const, flexDirection: "column" as const, gap: 9,
                 cursor: "pointer" as const, transition: "all 0.2s",
@@ -180,14 +195,11 @@ export function NewsAndMarket() {
                   target="_blank"
                   rel="noopener noreferrer"
                   style={itemStyle}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLAnchorElement).style.background = composedHoverBg;
-                    (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(0,180,255,0.25)";
+                  onMouseEnter={() => {
+                    if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                   }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLAnchorElement).style.background = composedBg;
-                    (e.currentTarget as HTMLAnchorElement).style.borderColor = isTop
-                      ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)";
+                  onMouseLeave={() => {
+                    setHoveredTickers(null);
                   }}
                 >
                   {content}
@@ -196,14 +208,11 @@ export function NewsAndMarket() {
                 <div
                   key={n.id}
                   style={itemStyle}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLDivElement).style.background = composedHoverBg;
-                    (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(0,180,255,0.25)";
+                  onMouseEnter={() => {
+                    if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                   }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLDivElement).style.background = composedBg;
-                    (e.currentTarget as HTMLDivElement).style.borderColor = isTop
-                      ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)";
+                  onMouseLeave={() => {
+                    setHoveredTickers(null);
                   }}
                 >
                   {content}
@@ -217,41 +226,121 @@ export function NewsAndMarket() {
       {/* ── Sidebar ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-        {/* Market Snapshot */}
-        <div style={{ ...glass, padding: 22 }}>
-          <div style={{
-            fontFamily: mono, fontSize: 10,
-            color: "rgba(0,180,255,0.45)", letterSpacing: "0.10em",
-            marginBottom: 16,
-          }}>
-            MARKET SNAPSHOT
-          </div>
-          {displaySnapshot.map((m, i) => (
-            <div
-              key={m.label}
-              style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "10px 0",
-                borderBottom: i < displaySnapshot.length - 1
-                  ? "1px solid rgba(0,180,255,0.07)" : "none",
-              }}
-            >
-              <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
-                {m.label}
-              </span>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
-                  {m.value}
+        {/* Market Snapshot — switches to Impacted Stocks on hover */}
+        {hoveredTickers && Object.keys(backendQuotes).length > 0 ? (
+          <div style={{ ...glass, padding: 22 }}>
+            <div style={{
+              fontFamily: mono, fontSize: 10,
+              color: "rgba(0,180,255,0.45)", letterSpacing: "0.10em",
+              marginBottom: 16,
+            }}>
+              IMPACTED STOCKS
+            </div>
+            {hoveredTickers.map((ticker, i) => {
+              const q = backendQuotes[ticker];
+              const price = q?.price || 0;
+              const changePct = q?.changePercent || 0;
+              const up = changePct >= 0;
+              return (
+                <div
+                  key={ticker}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 0",
+                    borderBottom: i < hoveredTickers.length - 1
+                      ? "1px solid rgba(0,180,255,0.07)" : "none",
+                  }}
+                >
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                    {ticker}
+                  </span>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
+                      {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: up ? "#00d282" : "#ff5064" }}>
+                      {price ? `${up ? "+" : ""}${changePct.toFixed(2)}%` : ""}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontFamily: mono, fontSize: 10, color: m.up ? "#00d282" : "#ff5064" }}>
-                  {m.change}
+              );
+            })}
+          </div>
+        ) : topStocks.length > 0 && Object.keys(backendQuotes).length > 0 ? (
+          <div style={{ ...glass, padding: 22 }}>
+            <div style={{
+              fontFamily: mono, fontSize: 10,
+              color: "rgba(0,180,255,0.45)", letterSpacing: "0.10em",
+              marginBottom: 16,
+            }}>
+              TOP MOVERS
+            </div>
+            {topStocks.map((ticker, i) => {
+              const q = backendQuotes[ticker];
+              const price = q?.price || 0;
+              const changePct = q?.changePercent || 0;
+              const up = changePct >= 0;
+              return (
+                <div
+                  key={ticker}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 0",
+                    borderBottom: i < topStocks.length - 1
+                      ? "1px solid rgba(0,180,255,0.07)" : "none",
+                  }}
+                >
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                    {ticker}
+                  </span>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
+                      {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: up ? "#00d282" : "#ff5064" }}>
+                      {price ? `${up ? "+" : ""}${changePct.toFixed(2)}%` : ""}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ ...glass, padding: 22 }}>
+            <div style={{
+              fontFamily: mono, fontSize: 10,
+              color: "rgba(0,180,255,0.45)", letterSpacing: "0.10em",
+              marginBottom: 16,
+            }}>
+              MARKET SNAPSHOT
+            </div>
+            {displaySnapshot.map((m, i) => (
+              <div
+                key={m.label}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "10px 0",
+                  borderBottom: i < displaySnapshot.length - 1
+                    ? "1px solid rgba(0,180,255,0.07)" : "none",
+                }}
+              >
+                <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  {m.label}
+                </span>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
+                    {m.value}
+                  </div>
+                  <div style={{ fontFamily: mono, fontSize: 10, color: m.up ? "#00d282" : "#ff5064" }}>
+                    {m.change}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* Top Signals */}
+        {/* Top Signals — dynamic from backend, fallback to static */}
         <div style={{ ...glass, padding: 22 }}>
           <div style={{
             fontFamily: mono, fontSize: 10,
@@ -260,7 +349,37 @@ export function NewsAndMarket() {
           }}>
             TOP SIGNALS TODAY
           </div>
-          {SIGNALS.map((s, i) => (
+          {topSignals.length > 0 ? topSignals.map((s, i) => {
+            const color = SIGNAL_TYPE_COLORS[s.type] || "#00d4ff";
+            const bgTint = s.type === "BULLISH" ? "rgba(0,210,130,0.05)" : "rgba(255,80,100,0.05)";
+            const bgHover = s.type === "BULLISH" ? "rgba(0,210,130,0.10)" : "rgba(255,80,100,0.10)";
+            const borderTint = s.type === "BULLISH" ? "rgba(0,210,130,0.15)" : "rgba(255,80,100,0.15)";
+            return (
+              <div
+                key={i}
+                style={{
+                  padding: "11px 13px", marginBottom: 7,
+                  background: bgTint,
+                  borderRadius: 8, border: `1px solid ${borderTint}`,
+                  cursor: "pointer", transition: "background 0.15s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = bgHover)}
+                onMouseLeave={e => (e.currentTarget.style.background = bgTint)}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontFamily: mono, fontSize: 11, color, fontWeight: 500 }}>
+                    {s.ticker}
+                  </span>
+                  <span style={{ fontFamily: mono, fontSize: 9, color, letterSpacing: "0.08em", opacity: 0.6 }}>
+                    {s.type} {s.sentiment > 0 ? `+${s.sentiment}` : s.sentiment}
+                  </span>
+                </div>
+                <span style={{ fontFamily: sans, fontSize: 12, color: "rgba(180,210,255,0.55)", lineHeight: 1.5 }}>
+                  {s.headline}
+                </span>
+              </div>
+            );
+          }) : FALLBACK_SIGNALS.map((s, i) => (
             <div
               key={i}
               style={{
