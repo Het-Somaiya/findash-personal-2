@@ -51,8 +51,31 @@ export interface NewsArticle {
   url:      string;
   image?:   string;
   summary?: string;
-  // sentiment derived client-side from headline keywords
   sentiment: "positive" | "negative" | "mixed";
+  /** Numeric sentiment score from backend (-10 to +10). Null when using fallback data. */
+  sentimentScore: number | null;
+}
+
+export interface BackendQuote {
+  symbol:        string;
+  price:         number;
+  change:        number;
+  changePercent: number;
+}
+
+export interface TopSignal {
+  ticker:    string;
+  type:      "BULLISH" | "BEARISH";
+  sentiment: number;
+  headline:  string;
+}
+
+export interface NewsResponse {
+  articles:    NewsArticle[];
+  fromBackend: boolean;
+  quotes:      Record<string, BackendQuote>;
+  topStocks:   string[];
+  topSignals:  TopSignal[];
 }
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
@@ -153,37 +176,51 @@ export async function searchTickers(query: string): Promise<TickerSuggestion[]> 
 
 const FALLBACK_NEWS: NewsArticle[] = [
   { id: 1, headline: "Fed signals patience on rate cuts as inflation data remains sticky",
-    source: "Reuters",  time: "14m ago", sentiment: "negative", tickers: ["SPY","TLT"], url: "#" },
+    source: "Reuters",  time: "14m ago", sentiment: "negative", sentimentScore: null, tickers: ["SPY","TLT"], url: "#" },
   { id: 2, headline: "NVIDIA surpasses $3T market cap on sustained data center demand",
-    source: "Bloomberg",time: "31m ago", sentiment: "positive", tickers: ["NVDA"],       url: "#" },
+    source: "Bloomberg",time: "31m ago", sentiment: "positive", sentimentScore: null, tickers: ["NVDA"],       url: "#" },
   { id: 3, headline: "Apple explores AI partnerships to accelerate on-device model capabilities",
-    source: "WSJ",      time: "52m ago", sentiment: "positive", tickers: ["AAPL"],       url: "#" },
+    source: "WSJ",      time: "52m ago", sentiment: "positive", sentimentScore: null, tickers: ["AAPL"],       url: "#" },
   { id: 4, headline: "Oil futures slide as OPEC+ production agreement faces internal dissent",
-    source: "FT",       time: "1h ago",  sentiment: "negative", tickers: ["USO","XOM"],  url: "#" },
+    source: "FT",       time: "1h ago",  sentiment: "negative", sentimentScore: null, tickers: ["USO","XOM"],  url: "#" },
   { id: 5, headline: "Treasury yield curve steepens ahead of next week's auction schedule",
-    source: "Reuters",  time: "1h ago",  sentiment: "mixed",    tickers: ["TLT","IEF"],  url: "#" },
+    source: "Reuters",  time: "1h ago",  sentiment: "mixed",    sentimentScore: null, tickers: ["TLT","IEF"],  url: "#" },
   { id: 6, headline: "Microsoft Azure revenue growth re-accelerates, beating analyst estimates",
-    source: "Bloomberg",time: "2h ago",  sentiment: "positive", tickers: ["MSFT"],       url: "#" },
+    source: "Bloomberg",time: "2h ago",  sentiment: "positive", sentimentScore: null, tickers: ["MSFT"],       url: "#" },
   { id: 7, headline: "Regional bank index diverges from broader financials on deposit flow data",
-    source: "FT",       time: "2h ago",  sentiment: "mixed",    tickers: ["KRE","XLF"],  url: "#" },
+    source: "FT",       time: "2h ago",  sentiment: "mixed",    sentimentScore: null, tickers: ["KRE","XLF"],  url: "#" },
 ];
 
-export async function getNews(): Promise<{ articles: NewsArticle[]; fromBackend: boolean }> {
+export async function getNews(): Promise<NewsResponse> {
   try {
     const res = await fetch(`${BACKEND_BASE}/api/news/`, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const raw: Array<{
+    const data = await res.json();
+
+    // Natasha's backend returns { articles, quotes, topStocks, topSignals }
+    const rawArticles: Array<{
       id: number | string; headline: string; source: string;
       time: string; tickers: string[]; url: string; image?: string; summary?: string;
-    }> = await res.json();
+      sentiment?: number;
+    }> = data.articles || data;
 
-    const articles: NewsArticle[] = raw.map(a => ({
+    const articles: NewsArticle[] = rawArticles.map(a => ({
       ...a,
-      sentiment: deriveSentiment(a.headline),
+      sentimentScore: typeof a.sentiment === "number" ? a.sentiment : null,
+      sentiment: typeof a.sentiment === "number"
+        ? (a.sentiment > 0 ? "positive" : a.sentiment < 0 ? "negative" : "mixed")
+        : deriveSentiment(a.headline),
     }));
-    return { articles, fromBackend: true };
+
+    return {
+      articles,
+      fromBackend: true,
+      quotes: data.quotes || {},
+      topStocks: data.topStocks || [],
+      topSignals: data.topSignals || [],
+    };
   } catch {
-    return { articles: FALLBACK_NEWS, fromBackend: false };
+    return { articles: FALLBACK_NEWS, fromBackend: false, quotes: {}, topStocks: [], topSignals: [] };
   }
 }
 

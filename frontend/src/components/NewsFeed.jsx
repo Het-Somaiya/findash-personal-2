@@ -7,6 +7,13 @@ const glass = {
   border: "1px solid rgba(0, 180, 255, 0.14)",
 };
 
+function sentimentBackground(score) {
+  if (!score || score === 0) return undefined;
+  const intensity = Math.abs(score) / 10 * 0.15;
+  if (score > 0) return `rgba(0, 210, 130, ${intensity})`;
+  return `rgba(255, 80, 100, ${intensity})`;
+}
+
 function timeAgoLabel(refreshedAt) {
   if (!refreshedAt) return "";
   const diff = Math.floor((Date.now() - refreshedAt) / 1000);
@@ -15,11 +22,12 @@ function timeAgoLabel(refreshedAt) {
   return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
 }
 
-export default function NewsFeed() {
+export default function NewsFeed({ onActiveTickers, onQuotes, onTopStocks, onTopSignals }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshedAt, setRefreshedAt] = useState(null);
+  const [hoveredIndex, setHoveredIndex] = useState(null);
 
   useEffect(() => {
     fetch("http://localhost:8000/api/news/")
@@ -28,9 +36,13 @@ export default function NewsFeed() {
         return res.json();
       })
       .then((data) => {
-        setArticles(data);
+        const articleList = data.articles || [];
+        setArticles(articleList);
         setRefreshedAt(Date.now());
         setLoading(false);
+        if (onQuotes) onQuotes(data.quotes || {});
+        if (onTopStocks) onTopStocks(data.topStocks || []);
+        if (onTopSignals) onTopSignals(data.topSignals || []);
       })
       .catch((err) => {
         setError(err.message);
@@ -83,6 +95,14 @@ export default function NewsFeed() {
             target="_blank"
             rel="noopener noreferrer"
             className="news-item"
+            onMouseEnter={() => {
+              setHoveredIndex(i);
+              if (onActiveTickers) onActiveTickers(n.tickers || []);
+            }}
+            onMouseLeave={() => {
+              setHoveredIndex(null);
+              if (onActiveTickers) onActiveTickers(null);
+            }}
             style={{
               ...glass,
               textDecoration: "none",
@@ -101,9 +121,10 @@ export default function NewsFeed() {
                   ? "rgba(0,180,255,0.24)"
                   : "rgba(0,180,255,0.1)",
               background:
-                i === 0
+                sentimentBackground(n.sentiment) ||
+                (i === 0
                   ? "rgba(0,28,58,0.65)"
-                  : "rgba(8,20,36,0.45)",
+                  : "rgba(8,20,36,0.45)"),
             }}
           >
             <div

@@ -1,24 +1,9 @@
 import { useState } from "react";
 
-const MARKET = [
-  { label: "SPX", value: "5,842.31", change: "+0.41%", up: true },
-  { label: "NDX", value: "20,614.87", change: "+0.78%", up: true },
-  { label: "VIX", value: "14.23", change: "-3.12%", up: false },
-  { label: "DXY", value: "103.84", change: "-0.19%", up: false },
-  { label: "10Y", value: "4.31%", change: "+0.04", up: true },
-  { label: "BTC", value: "87,240", change: "+1.24%", up: true },
-];
-
-const SIGNALS = [
-  { ticker: "NVDA", signal: "Options volume Z-score: 3.1", type: "FLOW" },
-  { ticker: "SPY", signal: "IV inversion detected at 7-day expiry", type: "IV" },
-  { ticker: "AAPL", signal: "Analyst revision diverges from price", type: "SENTIMENT" },
-];
 
 const SIGNAL_COLORS = {
-  FLOW: "#00d4ff",
-  IV: "#ffb800",
-  SENTIMENT: "#c084fc",
+  BULLISH: "#00d282",
+  BEARISH: "#ff5064",
 };
 
 const glass = {
@@ -29,12 +14,16 @@ const glass = {
   borderRadius: 16,
 };
 
-export default function Sidebar() {
+export default function Sidebar({ activeTickers = null, quotes = {}, topStocks = [], topSignals = [] }) {
   const [chatHint, setChatHint] = useState(true);
+
+  const isHovering = activeTickers !== null;
+  const displayTickers = isHovering ? activeTickers : topStocks;
+  const sectionTitle = isHovering ? "IMPACTED STOCKS" : "TOP MOVERS";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Market snapshot */}
+      {/* Impacted stocks or top movers */}
       <div style={{ ...glass, padding: 20 }}>
         <div
           style={{
@@ -45,53 +34,71 @@ export default function Sidebar() {
             marginBottom: 14,
           }}
         >
-          MARKET SNAPSHOT
+          {sectionTitle}
         </div>
-        {MARKET.map((m, i) => (
-          <div
-            key={m.label}
+        {displayTickers.length > 0 ? (
+          displayTickers.map((ticker, i) => {
+            const q = quotes[ticker];
+            const price = q?.price || 0;
+            const changePct = q?.changePercent || 0;
+            const up = changePct >= 0;
+            return (
+              <div
+                key={ticker}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "9px 0",
+                  borderBottom:
+                    i < displayTickers.length - 1
+                      ? "1px solid rgba(0,180,255,0.07)"
+                      : "none",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 12,
+                    color: "rgba(180,210,255,0.45)",
+                  }}
+                >
+                  {ticker}
+                </span>
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 13,
+                      color: "rgba(220,240,255,0.85)",
+                    }}
+                  >
+                    {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10,
+                      color: up ? "#00d282" : "#ff5064",
+                    }}
+                  >
+                    {price ? `${up ? "+" : ""}${changePct.toFixed(2)}%` : ""}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <span
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "9px 0",
-              borderBottom:
-                i < MARKET.length - 1
-                  ? "1px solid rgba(0,180,255,0.07)"
-                  : "none",
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 12,
+              color: "rgba(180,210,255,0.35)",
             }}
           >
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 12,
-                color: "rgba(180,210,255,0.45)",
-              }}
-            >
-              {m.label}
-            </span>
-            <div style={{ textAlign: "right" }}>
-              <div
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 13,
-                  color: "rgba(220,240,255,0.85)",
-                }}
-              >
-                {m.value}
-              </div>
-              <div
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  color: m.up ? "#00d282" : "#ff5064",
-                }}
-              >
-                {m.change}
-              </div>
-            </div>
-          </div>
-        ))}
+            Hover over a headline to see impacted stocks
+          </span>
+        )}
       </div>
 
       {/* Top signals */}
@@ -107,16 +114,16 @@ export default function Sidebar() {
         >
           TOP SIGNALS TODAY
         </div>
-        {SIGNALS.map((s, i) => (
+        {topSignals.map((s, i) => (
           <div
             key={i}
             className="signal-card"
             style={{
               padding: "10px 12px",
               marginBottom: 6,
-              background: "rgba(0,180,255,0.05)",
+              background: s.type === "BULLISH" ? "rgba(0,210,130,0.05)" : "rgba(255,80,100,0.05)",
               borderRadius: 8,
-              border: "1px solid rgba(0,180,255,0.1)",
+              border: `1px solid ${s.type === "BULLISH" ? "rgba(0,210,130,0.15)" : "rgba(255,80,100,0.15)"}`,
             }}
           >
             <div
@@ -141,11 +148,12 @@ export default function Sidebar() {
                 style={{
                   fontFamily: "'JetBrains Mono', monospace",
                   fontSize: 9,
-                  color: "rgba(0,180,255,0.38)",
+                  color: SIGNAL_COLORS[s.type] || "rgba(0,180,255,0.38)",
                   letterSpacing: "0.08em",
+                  opacity: 0.6,
                 }}
               >
-                {s.type}
+                {s.type} {s.sentiment > 0 ? `+${s.sentiment}` : s.sentiment}
               </span>
             </div>
             <span
@@ -153,25 +161,13 @@ export default function Sidebar() {
                 fontFamily: "'DM Sans', sans-serif",
                 fontSize: 12,
                 color: "rgba(180,210,255,0.55)",
+                lineHeight: 1.4,
               }}
             >
-              {s.signal}
+              {s.headline}
             </span>
           </div>
         ))}
-        <div style={{ marginTop: 8, textAlign: "center" }}>
-          <span
-            className="cta-link"
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 11,
-              color: "rgba(0,180,255,0.38)",
-              cursor: "pointer",
-            }}
-          >
-            Register to set custom signal alerts →
-          </span>
-        </div>
       </div>
 
       {/* AI chatbot hint */}
