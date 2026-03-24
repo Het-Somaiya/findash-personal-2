@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "bot" | "user";
@@ -14,25 +15,24 @@ const INITIAL: Message[] = [
 
 const QUICK = ["What is this surface?", "Explain GEX", "What's IV percentile?", "Why is VIX falling?"];
 
-function getReply(q: string): string {
-  const t = q.toLowerCase();
-  if (t.includes("surface") || t.includes("3d") || t.includes("what is this"))
-    return "The 3D surface is a live SPY/SPX options positioning map. The X-axis is strike price, the Z-axis is expiration (DTE), and the height represents dealer gamma exposure (GEX). Peaks show positive gamma zones where market makers hedge by buying rallies and selling dips — suppressing volatility. This is not financial advice.";
-  if (t.includes("gex") || t.includes("gamma"))
-    return "Gamma Exposure (GEX) is the aggregate delta-hedging pressure from market makers' options books. Positive GEX zones act as price gravity — the market tends to gravitate toward them. Negative GEX zones can amplify moves as dealers hedge in the same direction as price. This is not financial advice.";
-  if (t.includes("iv percentile") || t.includes("implied vol"))
-    return "IV Percentile tells you where current implied volatility sits relative to the past 52 weeks. An IV Percentile of 80 means IV is higher than 80% of all readings over the past year — options are expensive relative to recent history. Options sellers typically prefer high IV percentile setups. This is not financial advice.";
-  if (t.includes("vix") || t.includes("fear"))
-    return "VIX (CBOE Volatility Index) measures 30-day implied volatility of S&P 500 options. When VIX falls, options traders are paying less for protection — often reflecting reduced near-term uncertainty. At 14.23 it's below the historical median (~17), suggesting a relatively calm environment. This is not financial advice.";
-  if (t.includes("free") || t.includes("cost") || t.includes("what do i get"))
-    return "The free tier gives you: the live 3D options surface, real-time quotes, the news intelligence feed, and this AI assistant. Authenticated features (free to register) unlock historical simulation, GraphRAG filing analysis, strategy backtesting, and custom signal alerts.";
-  if (t.includes("filing") || t.includes("10-k") || t.includes("sec") || t.includes("edgar"))
-    return "FinDash's authenticated AI reads 10-K and 10-Q filings from EDGAR using a GraphRAG knowledge graph. You can ask plain-language questions — 'What are NVDA's stated supply chain risks?' — and get answers cited to the exact filing section. This is not financial advice.";
-  if (t.includes("simulation") || t.includes("history") || t.includes("backtest"))
-    return "Historical simulation lets you pick any past date and operate as if it were today — with only the data that existed then. Once you've made your decisions, you reveal what actually happened and get a debrief on signals you missed. It's the closest thing to a flight simulator for financial decision-making.";
-  if (t.includes("strategy") || t.includes("condor") || t.includes("straddle") || t.includes("spread"))
-    return "The authenticated strategy builder lets you model multi-leg options structures — straddles, iron condors, butterflies, calendar spreads — with full P&L diagrams and Greeks. Define strategies using relative parameters (delta, IV percentile thresholds) so the same logic applies across any underlying. This is not financial advice.";
-  return "Great question. FinDash surfaces market structure in a way most platforms don't — from the 3D options positioning surface to filing intelligence grounded in EDGAR documents. Is there a specific feature, concept, or market question I can help with? This is not financial advice.";
+const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
+
+async function getReply(
+  question: string,
+  history: { role: "user" | "assistant"; content: string }[],
+): Promise<string> {
+  try {
+    const res = await fetch(`${API_BASE}/api/chat/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: question, history }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.reply ?? "Sorry, I couldn't generate a response.";
+  } catch {
+    return "I'm having trouble connecting to the server. Please try again in a moment.";
+  }
 }
 
 const sans = "'DM Sans', sans-serif";
@@ -55,16 +55,25 @@ export function Chatbot() {
     return () => clearTimeout(t);
   }, []);
 
-  const send = (q?: string) => {
+  const send = async (q?: string) => {
     const text = (q ?? input).trim();
     if (!text || loading) return;
     setInput("");
-    setMessages(m => [...m, { role: "user", text }]);
+    const updated: Message[] = [...messages, { role: "user", text }];
+    setMessages(updated);
     setLoading(true);
-    setTimeout(() => {
-      setMessages(m => [...m, { role: "bot", text: getReply(text) }]);
-      setLoading(false);
-    }, 700 + Math.random() * 500);
+
+    // Build history for GPT (map bot→assistant)
+    const history = updated
+      .filter(m => m.role === "user" || m.role === "bot")
+      .map(m => ({
+        role: (m.role === "bot" ? "assistant" : "user") as "user" | "assistant",
+        content: m.text,
+      }));
+
+    const reply = await getReply(text, history);
+    setMessages(m => [...m, { role: "bot", text: reply }]);
+    setLoading(false);
   };
 
   const glass = {
@@ -133,7 +142,13 @@ export function Chatbot() {
                   fontSize: 12.5, color: "#cce4ff",
                   fontFamily: sans, lineHeight: 1.55,
                 }}>
-                  {m.text}
+                  {m.role === "bot" ? (
+                    <div className="chatbot-md">
+                      <ReactMarkdown>{m.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    m.text
+                  )}
                 </div>
               </div>
             ))}
