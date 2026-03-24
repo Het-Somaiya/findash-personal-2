@@ -1,16 +1,25 @@
 {
-  "name": "findash",
-  "version": "0.1.0",
+  "name": "findash-frontend",
   "private": true,
+  "version": "0.2.0",
+  "type": "module",
   "scripts": {
-    "install": "npm install --prefix frontend",
-    "dev": "concurrently \"npm run dev:fe\" \"npm run dev:be\"",
-    "dev:fe": "npm run dev --prefix frontend",
-    "dev:be": "cd backend && source venv/bin/activate && python manage.py runserver",
-    "setup": "npm i && cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
-    "build": "npm run build --prefix frontend && cd backend && source venv/bin/activate && python manage.py collectstatic --noinput"
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.160.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.160.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.2"
   }
 }
