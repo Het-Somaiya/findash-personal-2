@@ -9,8 +9,15 @@ import { RegistrationSection } from "./components/RegistrationSection";
 import { Footer }              from "./components/Footer";
 import { Chatbot }             from "./components/Chatbot";
 
+// 🟢 YOUR ADDITIONS
+import { useAuth } from "./context/AuthContext";
+import LoginModal from "./components/LoginModal";
+
 export default function App() {
   const contentRef = useRef<HTMLDivElement>(null);
+  
+  // 🟢 YOUR LOGIC: Check if user is logged in
+  const { isAuthenticated } = useAuth();
 
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -18,6 +25,9 @@ export default function App() {
 
   return (
     <>
+      {/* 🟢 YOUR MODAL: Shows if not authenticated */}
+      {!isAuthenticated && <LoginModal isOpen={true} />}
+
       {/* Fixed chrome */}
       <Navbar />
       <TickerTape />
