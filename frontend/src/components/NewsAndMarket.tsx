@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { getNews, getMarketSnapshot, type NewsArticle, type MarketSnapshot, type BackendQuote, type TopSignal } from "../lib/api";
+import { useState, useEffect, useRef } from "react";
+import { LineChart, Line, YAxis } from "recharts";
+import { getNews, getMarketSnapshot, getTicker24hBars, type NewsArticle, type MarketSnapshot, type BackendQuote, type TopSignal, type BarPoint } from "../lib/api";
 
 const FALLBACK_SIGNALS = [
   { ticker: "NVDA", signal: "Options volume Z-score: 3.1 — unusually elevated call buying", type: "FLOW"  },
@@ -72,6 +73,22 @@ function timeAgoLabel(refreshedAt: number | null) {
   return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
 }
 
+function Sparkline({ data, up }: { data: BarPoint[]; up: boolean }) {
+  return (
+    <LineChart width={80} height={32} data={data} margin={{ top: 4, right: 2, bottom: 4, left: 2 }}>
+      <YAxis domain={['dataMin', 'dataMax']} hide />
+      <Line
+        type="monotone"
+        dataKey="c"
+        stroke={up ? "#00d282" : "#ff5064"}
+        strokeWidth={1.5}
+        dot={false}
+        isAnimationActive={false}
+      />
+    </LineChart>
+  );
+}
+
 export function NewsAndMarket() {
   const [articles,     setArticles]     = useState<NewsArticle[]>([]);
   const [snapshot,     setSnapshot]     = useState<MarketSnapshot[]>([]);
@@ -83,6 +100,16 @@ export function NewsAndMarket() {
   const [topStocks,    setTopStocks]    = useState<string[]>([]);
   const [topSignals,   setTopSignals]   = useState<TopSignal[]>([]);
   const [hoveredTickers, setHoveredTickers] = useState<string[] | null>(null);
+  const [sparklines, setSparklines] = useState<Record<string, BarPoint[]>>({});
+  const sparklineCache = useRef<Record<string, BarPoint[]>>({});
+
+  const fetchSparklines = async (tickers: string[]) => {
+    const missing = tickers.filter(t => !sparklineCache.current[t]);
+    await Promise.all(missing.map(async t => {
+      sparklineCache.current[t] = await getTicker24hBars(t);
+    }));
+    setSparklines({ ...sparklineCache.current });
+  };
 
   useEffect(() => {
     getNews().then(({ articles: a, fromBackend: live, quotes, topStocks: ts, topSignals: sig }) => {
@@ -98,6 +125,14 @@ export function NewsAndMarket() {
       if (data.length) setSnapshot(data);
     });
   }, []);
+
+  useEffect(() => {
+    if (topStocks.length > 0) fetchSparklines(topStocks);
+  }, [topStocks]);
+
+  useEffect(() => {
+    if (hoveredTickers && hoveredTickers.length > 0) fetchSparklines(hoveredTickers);
+  }, [hoveredTickers]);
 
   const displaySnapshot: MarketSnapshot[] = snapshot.length > 0 ? snapshot : [
     { label: "SPX", value: "5,842.31",  change: "+0.41%", up: true  },
@@ -254,6 +289,7 @@ export function NewsAndMarket() {
                   <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
                     {ticker}
                   </span>
+                  <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
@@ -293,6 +329,7 @@ export function NewsAndMarket() {
                   <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
                     {ticker}
                   </span>
+                  <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}

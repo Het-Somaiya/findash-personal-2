@@ -2,6 +2,18 @@ import { useState, useEffect, useRef } from "react";
 import { searchTickers, type TickerSuggestion } from "../lib/api";
 import { SearchPanel, ASSET_DB, type AssetData } from "./SearchPanel";
 
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
+async function fetchAsset(symbol: string): Promise<AssetData | null> {
+  try {
+    const res = await fetch(`${BACKEND_BASE}/api/asset/?symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    return ASSET_DB[symbol.toUpperCase()] ?? null;
+  }
+}
+
 const SEARCH_SUGGESTIONS = [
   "NVDA",
   "SPY options flow",
@@ -57,11 +69,20 @@ export function Navbar() {
   // When a ticker is selected from the dropdown, load the asset card
   const handleSelect = (symbol: string) => {
     const key = symbol.toUpperCase();
-    const asset = ASSET_DB[key] ?? null;
-    setSelectedAsset(asset);
+    // Show mock immediately if available so the panel opens instantly
+    setSelectedAsset(ASSET_DB[key] ?? ({ ticker: key, name: key, type: "STOCK", sector: "—",
+      price: 0, change: 0, changePct: 0, up: true, volume: "—", avgVolume: "—", volRatio: 1,
+      marketCap: "—", pe: null, forwardPe: null, peg: null, eps: null, revenueGrowth: null,
+      revenueGrowthQoQ: null, week52High: 0, week52Low: 0, week52Pos: 50, nextEarnings: null,
+      rsi: 50, beta: 1, shortFloatPct: null, daysToCover: null, institutionalOwnership: 0,
+      insiderActivity: "neutral", insiderNet: 0, dividendYield: null, freeCashFlow: null,
+      description: "", chartSeed: 0, chartTrend: 0,
+    } as AssetData));
     setQuery(symbol);
     setFocused(false);
     clearTimeout(blurTimer.current);
+    // Fetch real data and replace
+    fetchAsset(key).then(data => { if (data) setSelectedAsset(data); });
   };
 
   const showDropdown = focused && !selectedAsset && (results.length > 0 || query === "");
