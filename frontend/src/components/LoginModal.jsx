@@ -1,123 +1,109 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-export default function LoginModal({ isOpen, onClose }) {
+export default function LoginModal({ isOpen, onClose, initialMode = 'login' }) {
+  const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  
+  const { login, register } = useAuth();
 
-  // Reset the form whenever the modal is opened or closed
+  // Reset modal state whenever it opens
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      setIsRegistering(initialMode === 'register');
       setUsername('');
+      setEmail('');
+      setPassword('');
       setError('');
     }
-  }, [isOpen]);
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
-  const handleClose = () => {
-    onClose();
-  };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setError('');
 
-  const handleLogin = (e) => {
-    if (e) e.preventDefault(); // Prevent page reload if used in a form
-
-    // THE GUARD: Ensure username isn't empty or just whitespace
-    if (!username.trim()) {
-      setError('A valid Terminal ID is required');
-      return;
+    if (isRegistering) {
+      if (!username || !email || !password) {
+        setError("All fields are required");
+        return;
+      }
+      const result = register(username, email, password);
+      if (result.success) {
+        setIsRegistering(false); 
+        setError("Registration successful! Please login.");
+      } else {
+        setError(result.message);
+      }
+    } else {
+      const result = login(username, password);
+      if (result.success) {
+        onClose();
+      } else {
+        setError("Incorrect username or password");
+      }
     }
-
-    // Success path
-    login(username.trim());
-    handleClose();
   };
 
   return (
-    <div 
-      onClick={handleClose} // Close when clicking the darkened backdrop
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000, display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(1, 8, 16, 0.85)', backdropFilter: 'blur(12px)',
-      }}
-    >
-      <div 
-        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside the box
-        style={{
-          background: 'rgba(8, 20, 36, 0.98)', 
-          border: '1px solid rgba(0, 180, 255, 0.3)',
-          padding: 40, borderRadius: 20, width: 360,
-          boxShadow: '0 0 40px rgba(0, 212, 255, 0.15)',
-          textAlign: 'center'
-        }}
-      >
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: '32px', marginBottom: 8 }}>🔐</div>
-          <h2 style={{ color: '#fff', fontSize: 24, fontFamily: 'DM Serif Display', margin: 0 }}>
-            Terminal Access
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 8, fontFamily: 'JetBrains Mono' }}>
-            SECURE_AUTH_REQUIRED
-          </p>
-        </div>
+    <div onClick={onClose} style={overlayStyle}>
+      <div onClick={(e) => e.stopPropagation()} style={modalStyle}>
+        <h2 style={{ color: '#fff', fontFamily: 'DM Serif Display', marginBottom: 20 }}>
+          {isRegistering ? 'Create Account' : 'Terminal Access'}
+        </h2>
         
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleSubmit}>
           <input
             type="text"
-            placeholder="Enter Username / ID"
-            autoFocus
+            placeholder="Username"
             value={username}
-            onChange={(e) => {
-              setUsername(e.target.value);
-              if (error) setError(''); // Clear error as user types
-            }}
-            style={{
-              width: '100%', padding: '12px 16px', marginBottom: 8,
-              background: 'rgba(0, 180, 255, 0.05)',
-              border: `1px solid ${error ? '#ff4d4d' : 'rgba(0,180,255,0.2)'}`,
-              borderRadius: 8, color: '#fff', outline: 'none',
-              fontFamily: 'JetBrains Mono', fontSize: 14,
-              transition: 'all 0.2s ease'
-            }}
+            onChange={(e) => setUsername(e.target.value)}
+            style={inputStyle}
           />
-
-          {error && (
-            <div style={{ 
-              color: '#ff4d4d', fontSize: '11px', marginBottom: 16, 
-              textAlign: 'left', fontFamily: 'JetBrains Mono' 
-            }}>
-              ⚠️ {error}
-            </div>
+          
+          {isRegistering && (
+            <input
+              type="email"
+              placeholder="Email Address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
+            />
           )}
 
-          <button
-            type="submit"
-            style={{
-              width: '100%', padding: '14px', marginTop: 8,
-              background: '#00d4ff', color: '#010810',
-              borderRadius: 8, fontWeight: '700', cursor: 'pointer',
-              border: 'none', fontSize: 14, letterSpacing: 1,
-              transition: 'transform 0.1s active',
-              boxShadow: '0 4px 15px rgba(0, 212, 255, 0.3)'
-            }}
-          >
-            INITIALIZE SESSION
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={inputStyle}
+          />
+
+          {error && <div style={errorStyle}>⚠️ {error}</div>}
+
+          <button type="submit" style={buttonStyle}>
+            {isRegistering ? 'REGISTER' : 'INITIALIZE SESSION'}
           </button>
         </form>
 
-        <button 
-          onClick={handleClose}
-          style={{ 
-            marginTop: 20, background: 'transparent', border: 'none', 
-            color: 'rgba(255,255,255,0.3)', fontSize: '11px', 
-            cursor: 'pointer', textDecoration: 'underline' 
-          }}
+        <p 
+          onClick={() => { setIsRegistering(!isRegistering); setError(''); }} 
+          style={toggleTextStyle}
         >
-          Abort Connection
-        </button>
+          {isRegistering ? 'Already have an account? Sign In' : 'Need access? Register Free'}
+        </p>
       </div>
     </div>
   );
 }
+
+const overlayStyle = { position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(1, 8, 16, 0.85)', backdropFilter: 'blur(12px)' };
+const modalStyle = { background: 'rgba(8, 20, 36, 0.98)', border: '1px solid rgba(0, 180, 255, 0.3)', padding: 40, borderRadius: 20, width: 360, textAlign: 'center' };
+const inputStyle = { width: '100%', padding: '12px', marginBottom: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0, 180, 255, 0.2)', borderRadius: 8, color: '#fff', outline: 'none' };
+const buttonStyle = { width: '100%', padding: '14px', background: '#00d4ff', color: '#010810', borderRadius: 8, fontWeight: '700', cursor: 'pointer', border: 'none' };
+const errorStyle = { color: '#ff4d4d', fontSize: '12px', marginBottom: 12, textAlign: 'left', fontFamily: 'JetBrains Mono' };
+const toggleTextStyle = { marginTop: 20, color: 'rgba(255,255,255,0.5)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' };

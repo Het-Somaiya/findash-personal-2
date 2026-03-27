@@ -1,5 +1,5 @@
 import "./styles/index.css";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Navbar }              from "./components/Navbar";
 import { TickerTape }          from "./components/TickerTape";
 import { HeroSection }         from "./components/HeroSection";
@@ -9,47 +9,54 @@ import { RegistrationSection } from "./components/RegistrationSection";
 import { Footer }              from "./components/Footer";
 import { Chatbot }             from "./components/Chatbot";
 
-// 🟢 YOUR ADDITIONS
 import { useAuth } from "./context/AuthContext";
 import LoginModal from "./components/LoginModal";
 
 export default function App() {
-  const contentRef = useRef<HTMLDivElement>(null);
-  
-  // 🟢 YOUR LOGIC: Check if user is logged in
+  const contentRef = useRef(null);
   const { isAuthenticated } = useAuth();
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('login'); // 'login' or 'register'
 
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleOpenLogin = () => {
+    setModalMode('login');
+    setIsLoginModalOpen(true);
+  };
+
+  const handleOpenRegister = () => {
+    setModalMode('register');
+    setIsLoginModalOpen(true);
+  };
+
   return (
     <>
-      {/* 🟢 YOUR MODAL: Shows if not authenticated */}
-      {!isAuthenticated && <LoginModal isOpen={true} />}
+      <LoginModal 
+        isOpen={isLoginModalOpen} 
+        onClose={() => setIsLoginModalOpen(false)} 
+        initialMode={modalMode}
+      />
 
-      {/* Fixed chrome */}
-      <Navbar />
+      <Navbar 
+        onLoginClick={handleOpenLogin} 
+        onRegisterClick={handleOpenRegister} 
+      />
+      
       <TickerTape />
-
-      {/* Full-viewport hero with live 3D surface */}
       <HeroSection onExploreClick={scrollToContent} />
 
-      {/* Content grid anchor */}
       <div ref={contentRef}>
         <NewsAndMarket />
       </div>
 
-      {/* Feature marketing */}
       <FeatureCards />
 
-      {/* Registration CTA */}
-      <RegistrationSection />
+      {!isAuthenticated && <RegistrationSection />}
 
-      {/* Footer */}
       <Footer />
-
-      {/* Floating AI chatbot */}
       <Chatbot />
     </>
   );

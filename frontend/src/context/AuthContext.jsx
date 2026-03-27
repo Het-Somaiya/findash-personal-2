@@ -1,47 +1,56 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-const AuthContext = createContext();
+const AuthContext = createContext(undefined);
 
 export const AuthProvider = ({ children }) => {
-  // 1. Initialize user as null
   const [user, setUser] = useState(null);
-  // 2. Loading state to prevent the UI from flickering 
   const [loading, setLoading] = useState(true);
 
-  // 3. THE MEMORY CHECK: Runs once when the browser loads/refreshes
   useEffect(() => {
-    const savedToken = localStorage.getItem('access_token');
-    const savedUser = localStorage.getItem('user_data');
-
-    if (savedToken && savedUser) {
-      // Restore the session from local storage
+    const savedUser = localStorage.getItem('active_session');
+    if (savedUser) {
       setUser(JSON.parse(savedUser));
     }
     setLoading(false);
   }, []);
 
-  const login = (username) => {
-    const userData = { username, tier: 'PRO' };
+  // 🟢 REGISTRATION LOGIC
+  const register = (username, email, password) => {
+    const users = JSON.parse(localStorage.getItem('users_db') || '[]');
     
-    // Save to browser memory (Persistence)
-    localStorage.setItem('access_token', 'mock_jwt_123');
-    localStorage.setItem('user_data', JSON.stringify(userData));
-    
-    // Update active state
-    setUser(userData);
+    // Check if username already exists
+    if (users.find(u => u.username === username)) {
+      return { success: false, message: "Username already taken" };
+    }
+
+    const newUser = { username, email, password, tier: 'PRO' };
+    users.push(newUser);
+    localStorage.setItem('users_db', JSON.stringify(users));
+    return { success: true };
+  };
+
+  // 🟢 LOGIN LOGIC
+  const login = (username, password) => {
+    const users = JSON.parse(localStorage.getItem('users_db') || '[]');
+    const foundUser = users.find(u => u.username === username && u.password === password);
+
+    if (foundUser) {
+      const sessionData = { username: foundUser.username, tier: foundUser.tier };
+      localStorage.setItem('active_session', JSON.stringify(sessionData));
+      setUser(sessionData);
+      return { success: true };
+    } else {
+      return { success: false, message: "Incorrect username or password" };
+    }
   };
 
   const logout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user_data');
+    localStorage.removeItem('active_session');
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, login, logout, isAuthenticated: !!user, loading }}
-    >
-      {/* Don't render the app until we've checked for the token */}
+    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );
