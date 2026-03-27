@@ -9,9 +9,10 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY ?? "YOUR_MASSIVE_API_KEY";
-const MASSIVE_BASE    = "https://api.massive.com/v1";
-const MOCK            = true; // flip to false with a real Massive key
+const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY ?? "";
+const MASSIVE_BASE    = "https://api.massive.com";
+// Automatically uses live data when a real key is provided
+const MOCK = !MASSIVE_API_KEY || MASSIVE_API_KEY === "your-massive-api-key-here";
 
 const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
 
@@ -124,9 +125,8 @@ function quoteToSnapshot(q: Quote): MarketSnapshot {
 }
 
 async function massiveFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${MASSIVE_BASE}${path}`, {
-    headers: { "X-API-Key": MASSIVE_API_KEY, "Content-Type": "application/json" },
-  });
+  const separator = path.includes("?") ? "&" : "?";
+  const res = await fetch(`${MASSIVE_BASE}${path}${separator}apiKey=${MASSIVE_API_KEY}`);
   if (!res.ok) throw new Error(`Massive API error: ${res.status}`);
   return res.json();
 }
@@ -147,11 +147,56 @@ function deriveSentiment(headline: string): "positive" | "negative" | "mixed" {
 
 // ─── Market data API ──────────────────────────────────────────────────────────
 
+// Response shapes from Massive.com REST API
+interface MassiveSnapshotTicker {
+  ticker:           string;
+  todaysChange:     number;
+  todaysChangePerc: number;
+  updated:          number;
+  day?:  { o: number; h: number; l: number; c: number; v: number; vw: number };
+  prevDay?: { c: number };
+}
+interface MassiveSnapshotResponse {
+  status:  string;
+  tickers: MassiveSnapshotTicker[];
+}
+interface MassiveTickerResult {
+  ticker:           string;
+  name:             string;
+  type:             string;
+  primary_exchange: string;
+}
+interface MassiveSearchResponse {
+  status:  string;
+  results: MassiveTickerResult[];
+}
+
+function massiveTypeToLocal(t: string): TickerSuggestion["type"] {
+  const upper = t.toUpperCase();
+  if (upper === "ETF")   return "etf";
+  if (upper === "INDEX") return "index";
+  if (upper === "CRYPTO" || upper === "X") return "crypto";
+  return "stock"; // CS, ADRC, etc.
+}
+
 export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapshot[]> {
   try {
-    if (MOCK) throw new Error("mock");
-    const results = await massiveFetch<Quote[]>(`/quotes?symbols=${symbols.join(",")}`);
-    return results.map(quoteToSnapshot);
+    const res = await fetch(`${BACKEND_BASE}/api/quotes/?symbols=${symbols.join(",")}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { quotes: Record<string, { price: number; changePct: number; change: number }> } = await res.json();
+
+    return symbols.map(sym => {
+      const q = data.quotes[sym];
+      if (!q || !q.price) {
+        const mock = MOCK_QUOTES[sym];
+        return mock ? quoteToSnapshot(mock) : { label: sym, value: "—", change: "—", up: true };
+      }
+      return quoteToSnapshot({
+        symbol: sym, name: MOCK_QUOTES[sym]?.name ?? sym,
+        price: q.price, change: q.change, changePct: q.changePct,
+        volume: 0, lastUpdated: "",
+      });
+    });
   } catch {
     return symbols.map(sym => {
       const q = MOCK_QUOTES[sym];
@@ -163,7 +208,15 @@ export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapsh
 export async function searchTickers(query: string): Promise<TickerSuggestion[]> {
   try {
     if (MOCK) throw new Error("mock");
-    return await massiveFetch<TickerSuggestion[]>(`/search?q=${encodeURIComponent(query)}&limit=8`);
+    const data = await massiveFetch<MassiveSearchResponse>(
+      `/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&market=stocks&limit=8`
+    );
+    return (data.results ?? []).map(r => ({
+      symbol:   r.ticker,
+      name:     r.name,
+      type:     massiveTypeToLocal(r.type),
+      exchange: r.primary_exchange,
+    }));
   } catch {
     const q = query.toLowerCase();
     return MOCK_SUGGESTIONS
@@ -221,6 +274,23 @@ export async function getNews(): Promise<NewsResponse> {
     };
   } catch {
     return { articles: FALLBACK_NEWS, fromBackend: false, quotes: {}, topStocks: [], topSignals: [] };
+  }
+}
+
+// ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
+
+export interface BarPoint { t: number; c: number; }
+
+const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
+
+export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
+  try {
+    const res = await fetch(`${BACKEND_BASE}/api/bars/?symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { bars: BarPoint[] } = await res.json();
+    return data.bars.length > 0 ? data.bars : FLAT_LINE;
+  } catch {
+    return FLAT_LINE;
   }
 }
 

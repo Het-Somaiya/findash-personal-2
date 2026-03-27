@@ -4,5 +4,8 @@ from .chat import chat
 
 urlpatterns = [
     path('news/', views.market_news, name='market-news'),
+    path('quotes/', views.stock_quotes, name='stock-quotes'),
+    path('asset/', views.stock_asset, name='stock-asset'),
+    path('bars/', views.stock_bars, name='stock-bars'),
     path('chat/', chat, name='chat'),
 ]
