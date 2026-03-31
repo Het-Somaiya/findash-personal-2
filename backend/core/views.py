@@ -2,6 +2,7 @@ import html
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
 import requests
 from django.conf import settings
@@ -422,6 +423,124 @@ def stock_bars(request):
         return Response({'bars': []})
 
     return Response({'bars': bars})
+
+
+# ─── Market Overview (bubble graph) ──────────────────────────────────────────
+
+MARKET_OVERVIEW_TICKERS = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMD",
+    "TSLA", "AMZN", "HD",
+    "JNJ", "UNH", "LLY",
+    "JPM", "BAC", "GS",
+    "NFLX", "T",
+    "XOM", "CVX",
+    "CAT", "BA",
+    "KO", "PG",
+    "NEE", "AMT",
+]
+
+LANDING_SECTORS = {
+    "AAPL": "Technology",       "MSFT": "Technology",       "NVDA": "Technology",
+    "GOOGL": "Technology",      "META": "Technology",        "AMD": "Technology",
+    "TSLA": "Consumer Disc.",   "AMZN": "Consumer Disc.",    "HD": "Consumer Disc.",
+    "JNJ": "Healthcare",        "UNH": "Healthcare",         "LLY": "Healthcare",
+    "JPM": "Financials",        "BAC": "Financials",         "GS": "Financials",
+    "NFLX": "Communication",    "T": "Communication",
+    "XOM": "Energy",            "CVX": "Energy",
+    "CAT": "Industrials",       "BA": "Industrials",
+    "KO": "Consumer Staples",   "PG": "Consumer Staples",
+    "NEE": "Utilities",
+    "AMT": "Real Estate",
+}
+
+_overview_lock  = threading.Lock()
+_overview_cache = {"data": None, "fetched_at": 0}
+OVERVIEW_TTL    = 300
+
+
+@api_view(['GET'])
+def market_overview(request):
+    """Return per-asset data for the landing page bubble graph."""
+    with _overview_lock:
+        if _overview_cache["data"] and time.time() - _overview_cache["fetched_at"] < OVERVIEW_TTL:
+            return Response(_overview_cache["data"])
+
+    api_key = settings.FINNHUB_API_KEY
+    if not api_key:
+        return Response({"error": "FINNHUB_API_KEY not configured"}, status=500)
+
+    # 1. Earnings calendar: ±90 days in one call
+    today = date.today()
+    earnings_map: dict = {}
+    try:
+        resp = requests.get(
+            "https://finnhub.io/api/v1/calendar/earnings",
+            params={
+                "from":  str(today - timedelta(days=90)),
+                "to":    str(today + timedelta(days=90)),
+                "token": api_key,
+            },
+            timeout=10,
+        )
+        if resp.ok:
+            for entry in resp.json().get("earningsCalendar", []):
+                sym = entry.get("symbol", "").upper()
+                if sym in LANDING_SECTORS:
+                    try:
+                        days = (date.fromisoformat(entry["date"]) - today).days
+                        if sym not in earnings_map or abs(days) < abs(earnings_map[sym]):
+                            earnings_map[sym] = days
+                    except (KeyError, ValueError):
+                        pass
+    except requests.RequestException:
+        pass
+
+    # 2. Quote + metrics for all tickers in parallel
+    def fetch_ticker(sym):
+        try:
+            q = requests.get("https://finnhub.io/api/v1/quote",
+                             params={"symbol": sym, "token": api_key}, timeout=5).json()
+            m = requests.get("https://finnhub.io/api/v1/stock/metric",
+                             params={"symbol": sym, "metric": "all", "token": api_key},
+                             timeout=5).json().get("metric", {})
+            return sym, q, m
+        except requests.RequestException:
+            return sym, {}, {}
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        ticker_results = list(pool.map(fetch_ticker, MARKET_OVERVIEW_TICKERS))
+
+    # 3. Pull sentiment scores from news cache
+    sentiment_map: dict = {}
+    with _cache_lock:
+        if _cache["data"]:
+            for sig in _cache["data"].get("topSignals", []):
+                sentiment_map[sig["ticker"]] = sig["sentiment"]
+            for article in _cache["data"].get("articles", []):
+                for ticker in article.get("tickers", []):
+                    if ticker not in sentiment_map and isinstance(article.get("sentiment"), (int, float)):
+                        sentiment_map[ticker] = article["sentiment"]
+
+    assets = []
+    for sym, q, m in ticker_results:
+        assets.append({
+            "ticker":        sym,
+            "name":          sym,
+            "sector":        LANDING_SECTORS.get(sym, "Other"),
+            "price":         q.get("c") or 0,
+            "changePct":     round(q.get("dp") or 0, 2),
+            "marketCap":     float(m.get("marketCapitalization") or 0),
+            "beta":          round(float(m.get("beta") or 1.0), 2),
+            "sentimentScore": float(sentiment_map.get(sym, 0)),
+            "daysToEarnings": earnings_map.get(sym),
+        })
+
+    result = {"assets": assets}
+    with _overview_lock:
+        _overview_cache["data"] = result
+        _overview_cache["fetched_at"] = time.time()
+
+    return Response(result)
 
 
 @api_view(['GET'])

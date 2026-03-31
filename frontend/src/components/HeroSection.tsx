@@ -1,5 +1,6 @@
-import { OptionsSurface }   from "./OptionsSurface";
-import { GreeksScatter3D } from "./GreeksScatter3D";
+import { OptionsSurface }      from "./OptionsSurface";
+import { GreeksScatter3D }     from "./GreeksScatter3D";
+import { LandingMarketGlobe }  from "./MarketGlobe";
 
 const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
@@ -20,7 +21,12 @@ export function HeroSection({ onExploreClick }: HeroSectionProps) {
       justifyContent: "center",
     }}>
 
-      {/* Layer 0: Three.js surface — background, dim */}
+      {/* Layer 0a: MarketGlobe — fills the hero background */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>
+        <LandingMarketGlobe />
+      </div>
+
+      {/* Layer 0b: Three.js surface — background, dim */}
       <OptionsSurface />
 
       {/* Layer 1: Greeks scatter — fills hero, glowing bokeh dots */}
