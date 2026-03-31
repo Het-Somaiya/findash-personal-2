@@ -286,11 +286,11 @@ export function NewsAndMarket() {
                       ? "1px solid rgba(0,180,255,0.07)" : "none",
                   }}
                 >
-                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)", width: 40, flexShrink: 0 }}>
                     {ticker}
                   </span>
                   <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: "right", width: 64, flexShrink: 0 }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                     </div>
@@ -326,11 +326,11 @@ export function NewsAndMarket() {
                       ? "1px solid rgba(0,180,255,0.07)" : "none",
                   }}
                 >
-                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)", width: 40, flexShrink: 0 }}>
                     {ticker}
                   </span>
                   <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: "right", width: 64, flexShrink: 0 }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                     </div>
