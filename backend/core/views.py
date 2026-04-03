@@ -2,6 +2,7 @@ import html
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
 import requests
 from django.conf import settings
@@ -422,6 +423,188 @@ def stock_bars(request):
         return Response({'bars': []})
 
     return Response({'bars': bars})
+
+
+# ─── Market Overview (bubble graph) ──────────────────────────────────────────
+
+MARKET_OVERVIEW_TICKERS = [
+    # Mag 7
+    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "TSLA",
+    # Technology
+    "AVGO", "ORCL", "AMD", "INTC", "QCOM", "TXN", "AMAT", "MU", "ADBE", "CRM", "NOW",
+    # Consumer Discretionary
+    "BRK-B", "HD", "SBUX", "NKE", "MCD", "BKNG",
+    # Healthcare
+    "JNJ", "UNH", "LLY", "ABBV", "PFE", "MRK", "TMO",
+    # Financials
+    "JPM", "GS", "V", "MA", "BAC", "WFC", "MS",
+    # Communication
+    "NFLX", "DIS", "T", "VZ",
+    # Energy
+    "XOM", "CVX", "COP", "SLB",
+    # Industrials
+    "CAT", "RTX", "BA", "GE", "HON",
+    # Consumer Staples
+    "WMT", "KO", "PG", "COST", "PM",
+    # Utilities
+    "NEE", "DUK",
+    # Real Estate
+    "AMT", "PLD",
+    # ETFs / indices / crypto from ticker tape
+    "SPY", "QQQ", "GLD", "IWM",
+    "SPX", "NDX", "VIX", "DXY", "10Y",
+    "BTC", "ETH",
+]
+
+# Map display tickers to Finnhub query symbols where they differ
+FINNHUB_SYMBOL_MAP = {
+    "BTC": "BINANCE:BTCUSDT",
+    "ETH": "BINANCE:ETHUSDT",
+    "SPX": "^GSPC",
+    "NDX": "^NDX",
+    "VIX": "^VIX",
+    "DXY": "DX-Y.NYB",
+    "10Y": "^TNX",
+}
+
+LANDING_SECTORS = {
+    "AAPL": "Technology",    "MSFT": "Technology",    "NVDA": "Technology",
+    "GOOGL": "Technology",   "META": "Technology",     "AMD": "Technology",
+    "AVGO": "Technology",    "ORCL": "Technology",
+    "INTC": "Technology",    "QCOM": "Technology",     "TXN": "Technology",
+    "AMAT": "Technology",    "MU": "Technology",       "ADBE": "Technology",
+    "CRM": "Technology",     "NOW": "Technology",
+    "TSLA": "Consumer Disc.", "AMZN": "Consumer Disc.", "HD": "Consumer Disc.",
+    "SBUX": "Consumer Disc.", "NKE": "Consumer Disc.",  "MCD": "Consumer Disc.",
+    "BKNG": "Consumer Disc.",
+    "JNJ": "Healthcare",     "UNH": "Healthcare",      "LLY": "Healthcare",
+    "ABBV": "Healthcare",    "PFE": "Healthcare",      "MRK": "Healthcare",
+    "TMO": "Healthcare",
+    "JPM": "Financials",     "GS": "Financials",       "BRK-B": "Financials",
+    "V": "Financials",       "MA": "Financials",       "BAC": "Financials",
+    "WFC": "Financials",     "MS": "Financials",
+    "NFLX": "Communication", "DIS": "Communication",   "T": "Communication",
+    "VZ": "Communication",
+    "XOM": "Energy",         "CVX": "Energy",          "COP": "Energy",
+    "SLB": "Energy",
+    "CAT": "Industrials",    "RTX": "Industrials",     "BA": "Industrials",
+    "GE": "Industrials",     "HON": "Industrials",
+    "WMT": "Consumer Staples", "KO": "Consumer Staples", "PG": "Consumer Staples",
+    "COST": "Consumer Staples", "PM": "Consumer Staples",
+    "NEE": "Utilities",      "DUK": "Utilities",
+    "AMT": "Real Estate",    "PLD": "Real Estate",
+    "SPY": "ETF",            "QQQ": "ETF",             "GLD": "ETF",
+    "IWM": "ETF",
+    "SPX": "Index",          "NDX": "Index",           "VIX": "Index",
+    "DXY": "Index",          "10Y": "Index",
+    "BTC": "Crypto",         "ETH": "Crypto",
+}
+
+# Tickers that don't have earnings or stock metrics (indices, ETFs, crypto)
+NON_STOCK_TICKERS = {"SPX", "NDX", "VIX", "DXY", "10Y", "BTC", "ETH", "SPY", "QQQ", "GLD", "IWM"}
+
+_overview_lock    = threading.Lock()
+_overview_cache   = {"data": None, "fetched_at": 0}
+_overview_refresh = False   # True while a background refresh is running
+OVERVIEW_TTL      = 900     # 15 min
+
+# Limit concurrent Finnhub connections (not per-minute — just concurrency)
+_finnhub_sem = threading.Semaphore(8)
+
+def _finnhub_get(url, params, timeout=6):
+    with _finnhub_sem:
+        return requests.get(url, params=params, timeout=timeout)
+
+
+def _do_overview_fetch():
+    """Fetch all ticker data and populate the cache. Runs in a background thread."""
+    global _overview_refresh
+    api_key = settings.FINNHUB_API_KEY
+    if not api_key:
+        return
+    today = date.today()
+
+    def fetch_ticker(sym):
+        try:
+            api_sym = FINNHUB_SYMBOL_MAP.get(sym, sym)
+            q = _finnhub_get("https://finnhub.io/api/v1/quote",
+                             {"symbol": api_sym, "token": api_key}).json()
+            is_non_stock = sym in NON_STOCK_TICKERS
+            m = {} if is_non_stock else _finnhub_get(
+                "https://finnhub.io/api/v1/stock/metric",
+                {"symbol": sym, "metric": "all", "token": api_key},
+            ).json().get("metric", {})
+            days_to_earnings = None
+            if not is_non_stock:
+                ec = _finnhub_get("https://finnhub.io/api/v1/calendar/earnings",
+                                  {"symbol": sym, "token": api_key,
+                                   "from": (today - timedelta(days=180)).isoformat(),
+                                   "to":   (today + timedelta(days=180)).isoformat()})
+                if ec.ok:
+                    best = None
+                    for entry in ec.json().get("earningsCalendar", []):
+                        try:
+                            d = (date.fromisoformat(entry["date"]) - today).days
+                            if best is None or abs(d) < abs(best):
+                                best = d
+                        except (KeyError, ValueError):
+                            pass
+                    days_to_earnings = best
+            return sym, q, m, days_to_earnings
+        except Exception:
+            return sym, {}, {}, None
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        ticker_results = list(pool.map(fetch_ticker, MARKET_OVERVIEW_TICKERS))
+
+    sentiment_map: dict = {}
+    with _cache_lock:
+        if _cache["data"]:
+            for sig in _cache["data"].get("topSignals", []):
+                sentiment_map[sig["ticker"]] = sig["sentiment"]
+            for article in _cache["data"].get("articles", []):
+                for ticker in article.get("tickers", []):
+                    if ticker not in sentiment_map and isinstance(article.get("sentiment"), (int, float)):
+                        sentiment_map[ticker] = article["sentiment"]
+
+    assets = []
+    for sym, q, m, days_to_earnings in ticker_results:
+        assets.append({
+            "ticker":         sym,
+            "name":           sym,
+            "sector":         LANDING_SECTORS.get(sym, "Other"),
+            "price":          q.get("c") or 0,
+            "changePct":      round(q.get("dp") or 0, 2),
+            "marketCap":      float(m.get("marketCapitalization") or 0),
+            "beta":           round(float(m.get("beta") or 1.0), 2),
+            "sentimentScore": float(sentiment_map.get(sym, 0)),
+            "daysToEarnings": days_to_earnings,
+        })
+
+    with _overview_lock:
+        _overview_cache["data"] = {"assets": assets}
+        _overview_cache["fetched_at"] = time.time()
+    _overview_refresh = False
+
+
+@api_view(['GET'])
+def market_overview(request):
+    """Return per-asset data for the landing page bubble graph."""
+    global _overview_refresh
+    if not settings.FINNHUB_API_KEY:
+        return Response({"error": "FINNHUB_API_KEY not configured"}, status=500)
+
+    with _overview_lock:
+        fresh = _overview_cache["data"] and time.time() - _overview_cache["fetched_at"] < OVERVIEW_TTL
+
+    if not fresh and not _overview_refresh:
+        _overview_refresh = True
+        threading.Thread(target=_do_overview_fetch, daemon=True).start()
+
+    with _overview_lock:
+        cached = _overview_cache["data"]
+
+    return Response(cached if cached else {"assets": [], "loading": True})
 
 
 @api_view(['GET'])

@@ -32,11 +32,11 @@ const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
 const glass = {
-  background: "rgba(8,20,36,0.55)",
+  background: "rgba(10,12,20,0.55)",
   backdropFilter: "blur(18px)",
   WebkitBackdropFilter: "blur(18px)",
-  border: "1px solid rgba(0,180,255,0.14)",
   borderRadius: 16,
+  boxShadow: "0 0 5px rgba(0,180,255,0.05)",
 };
 
 function TagPill({ ticker }: { ticker: string }) {
@@ -174,7 +174,7 @@ export function NewsAndMarket() {
                 ...glass,
                 height: i === 0 ? 88 : 62,
                 borderRadius: i === 0 ? "16px 16px 8px 8px" : 8,
-                background: "rgba(8,20,36,0.35)",
+                background: "rgba(10,12,20,0.35)",
                 animation: "shimmer 1.5s infinite",
               }} />
             ))}
@@ -286,11 +286,11 @@ export function NewsAndMarket() {
                       ? "1px solid rgba(0,180,255,0.07)" : "none",
                   }}
                 >
-                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)", width: 40, flexShrink: 0 }}>
                     {ticker}
                   </span>
                   <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: "right", width: 64, flexShrink: 0 }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                     </div>
@@ -326,11 +326,11 @@ export function NewsAndMarket() {
                       ? "1px solid rgba(0,180,255,0.07)" : "none",
                   }}
                 >
-                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)", width: 40, flexShrink: 0 }}>
                     {ticker}
                   </span>
                   <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ textAlign: "right", width: 64, flexShrink: 0 }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                     </div>

@@ -20,7 +20,7 @@ export default function App() {
     <>
       {/* Fixed chrome */}
       <Navbar />
-      <TickerTape />
+      {/* <TickerTape /> */}
 
       {/* Full-viewport hero with live 3D surface */}
       <HeroSection onExploreClick={scrollToContent} />

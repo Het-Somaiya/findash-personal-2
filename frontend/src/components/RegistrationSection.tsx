@@ -5,7 +5,7 @@ const mono  = "'JetBrains Mono', monospace";
 export function RegistrationSection() {
   return (
     <section style={{
-      background: "rgba(0,18,38,0.70)",
+      background: "rgba(8,10,16,0.70)",
       borderTop: "1px solid rgba(0,180,255,0.08)",
       backdropFilter: "blur(10px)",
       WebkitBackdropFilter: "blur(10px)",
