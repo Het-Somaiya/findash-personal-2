@@ -33,10 +33,11 @@ const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
 const glass = {
-  background: "rgba(8,20,36,0.55)",
+  background: "rgba(10,12,20,0.55)",
   backdropFilter: "blur(18px)",
   WebkitBackdropFilter: "blur(18px)",
   borderRadius: 16,
+  boxShadow: "0 0 5px rgba(0,180,255,0.05)",
 };
 
 export function FeatureCards() {
@@ -54,7 +55,6 @@ export function FeatureCards() {
             key={i}
             style={{
               ...glass,
-              border: `1px solid ${f.borderColor}`,
               padding: "32px 28px",
               transition: "all 0.25s",
               cursor: "default",
@@ -62,14 +62,12 @@ export function FeatureCards() {
             onMouseEnter={e => {
               const el = e.currentTarget as HTMLDivElement;
               el.style.transform = "translateY(-4px)";
-              el.style.borderColor = "rgba(0,180,255,0.32)";
-              el.style.boxShadow = "0 20px 60px rgba(0,0,0,0.4), 0 0 30px rgba(0,180,255,0.06)";
+              el.style.boxShadow = "0 0 8px rgba(0,180,255,0.10), 0 20px 60px rgba(0,0,0,0.4)";
             }}
             onMouseLeave={e => {
               const el = e.currentTarget as HTMLDivElement;
               el.style.transform = "translateY(0)";
-              el.style.borderColor = f.borderColor;
-              el.style.boxShadow = "none";
+              el.style.boxShadow = "0 0 5px rgba(0,180,255,0.05)";
             }}
           >
             <div style={{

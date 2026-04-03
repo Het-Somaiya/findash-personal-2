@@ -32,11 +32,11 @@ const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
 const glass = {
-  background: "rgba(8,20,36,0.55)",
+  background: "rgba(10,12,20,0.55)",
   backdropFilter: "blur(18px)",
   WebkitBackdropFilter: "blur(18px)",
-  border: "1px solid rgba(0,180,255,0.14)",
   borderRadius: 16,
+  boxShadow: "0 0 5px rgba(0,180,255,0.05)",
 };
 
 function TagPill({ ticker }: { ticker: string }) {
@@ -174,7 +174,7 @@ export function NewsAndMarket() {
                 ...glass,
                 height: i === 0 ? 88 : 62,
                 borderRadius: i === 0 ? "16px 16px 8px 8px" : 8,
-                background: "rgba(8,20,36,0.35)",
+                background: "rgba(10,12,20,0.35)",
                 animation: "shimmer 1.5s infinite",
               }} />
             ))}

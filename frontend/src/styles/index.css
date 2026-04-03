@@ -7,8 +7,8 @@
 }
 
 :root {
-  --bg-base:        #030d1a;
-  --bg-raised:      #061422;
+  --bg-base:        #060810;
+  --bg-raised:      #0a0d18;
   --accent:         #00d4ff;
   --accent-dim:     rgba(0, 180, 255, 0.18);
   --accent-border:  rgba(0, 180, 255, 0.20);
@@ -18,7 +18,7 @@
   --text-primary:   #e8f4ff;
   --text-secondary: rgba(180, 210, 255, 0.65);
   --text-muted:     rgba(180, 210, 255, 0.35);
-  --glass-bg:       rgba(8, 20, 36, 0.55);
+  --glass-bg:       rgba(10, 12, 20, 0.55);
   --glass-border:   rgba(0, 180, 255, 0.14);
 }
 
@@ -49,20 +49,13 @@ body {
   animation: ticker-scroll 32s linear infinite;
 }
 
-@keyframes badge-glow {
-  0%, 100% { box-shadow: 0 0 10px rgba(0, 180, 255, 0.20); }
-  50%       { box-shadow: 0 0 22px rgba(0, 180, 255, 0.48); }
-}
-.badge-glow {
-  animation: badge-glow 3s infinite;
-}
 
 @keyframes dot-pulse {
   0%, 100% { opacity: 0.3;  transform: scale(0.8); }
   50%       { opacity: 1;   transform: scale(1.1); }
 }
 .dot-pulse {
-  animation: dot-pulse 2s infinite;
+  animation: dot-pulse 5s infinite;
 }
 
 @keyframes fadeUp {
