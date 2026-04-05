@@ -12,7 +12,7 @@ const mono  = "'JetBrains Mono', monospace";
 export function Footer() {
   return (
     <footer style={{
-      background: "#020a16",
+      background: "#060810",
       borderTop: "1px solid rgba(0,180,255,0.06)",
       padding: "64px 32px 40px",
     }}>

@@ -1,0 +1,22 @@
+{
+  "name": "findash",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "install": "npm install --prefix frontend",
+    "add": "npm install --prefix frontend",
+    "add:root": "npm install",
+    "db": "./scripts/start-db.sh",
+    "db:migrate": "cd backend && source venv/bin/activate && python manage.py migrate",
+    "db:makemigrations": "cd backend && source venv/bin/activate && python manage.py makemigrations",
+    "db:reset": "./scripts/reset-db.sh",
+    "dev": "npm run db && npm run db:migrate && concurrently \"npm run dev:fe\" \"npm run dev:be\"",
+    "dev:fe": "npm run dev --prefix frontend",
+    "dev:be": "cd backend && source venv/bin/activate && python manage.py runserver",
+    "setup": "npm i && cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt",
+    "build": "npm run build --prefix frontend && cd backend && source venv/bin/activate && python manage.py collectstatic --noinput"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

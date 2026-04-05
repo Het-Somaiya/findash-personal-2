@@ -2,6 +2,18 @@ import { useState, useEffect, useRef } from "react";
 import { searchTickers, type TickerSuggestion } from "../lib/api";
 import { SearchPanel, ASSET_DB, type AssetData } from "./SearchPanel";
 
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
+async function fetchAsset(symbol: string): Promise<AssetData | null> {
+  try {
+    const res = await fetch(`${BACKEND_BASE}/api/asset/?symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    return ASSET_DB[symbol.toUpperCase()] ?? null;
+  }
+}
+
 const SEARCH_SUGGESTIONS = [
   "NVDA",
   "SPY options flow",
@@ -39,10 +51,10 @@ export function Navbar() {
     return () => clearInterval(id);
   }, []);
 
-  // Scroll-triggered navbar style
+  // Scroll-triggered navbar + vignette
   useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 60);
-    window.addEventListener("scroll", h);
+    const h = () => setScrolled(window.scrollY > window.innerHeight * 0.85);
+    window.addEventListener("scroll", h, { passive: true });
     return () => window.removeEventListener("scroll", h);
   }, []);
 
@@ -57,11 +69,20 @@ export function Navbar() {
   // When a ticker is selected from the dropdown, load the asset card
   const handleSelect = (symbol: string) => {
     const key = symbol.toUpperCase();
-    const asset = ASSET_DB[key] ?? null;
-    setSelectedAsset(asset);
+    // Show mock immediately if available so the panel opens instantly
+    setSelectedAsset(ASSET_DB[key] ?? ({ ticker: key, name: key, type: "STOCK", sector: "—",
+      price: 0, change: 0, changePct: 0, up: true, volume: "—", avgVolume: "—", volRatio: 1,
+      marketCap: "—", pe: null, forwardPe: null, peg: null, eps: null, revenueGrowth: null,
+      revenueGrowthQoQ: null, week52High: 0, week52Low: 0, week52Pos: 50, nextEarnings: null,
+      rsi: 50, beta: 1, shortFloatPct: null, daysToCover: null, institutionalOwnership: 0,
+      insiderActivity: "neutral", insiderNet: 0, dividendYield: null, freeCashFlow: null,
+      description: "", chartSeed: 0, chartTrend: 0,
+    } as AssetData));
     setQuery(symbol);
     setFocused(false);
     clearTimeout(blurTimer.current);
+    // Fetch real data and replace
+    fetchAsset(key).then(data => { if (data) setSelectedAsset(data); });
   };
 
   const showDropdown = focused && !selectedAsset && (results.length > 0 || query === "");
@@ -75,29 +96,35 @@ export function Navbar() {
   ];
 
   return (
+    <>
+      {/* Vignette overlay — top corners darken when scrolled past the globe */}
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, height: 320,
+        zIndex: 99, pointerEvents: "none",
+        opacity: scrolled ? 1 : 0,
+        transition: "opacity 0.5s ease",
+        background: [
+          "radial-gradient(ellipse 52vw 320px at 0% 0%, rgba(4,6,12,0.82) 0%, transparent 65%)",
+          "radial-gradient(ellipse 52vw 320px at 100% 0%, rgba(4,6,12,0.82) 0%, transparent 65%)",
+          "linear-gradient(to bottom, rgba(4,6,12,0.30) 0%, transparent 38%)",
+        ].join(", "),
+      }} />
+
     <nav
       ref={navbarRef}
       style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-        padding: "0 32px", height: 60,
+        padding: "0 40px", height: 72,
         display: "flex", alignItems: "center", gap: 28,
-        background: scrolled ? "rgba(3,13,26,0.92)" : "transparent",
-        backdropFilter: scrolled ? "blur(20px)" : "none",
-        WebkitBackdropFilter: scrolled ? "blur(20px)" : "none",
-        borderBottom: scrolled ? "1px solid rgba(0,180,255,0.10)" : "none",
-        transition: "all 0.3s ease",
+        background: scrolled ? "rgba(6,8,14,0.88)" : "transparent",
+        backdropFilter: scrolled ? "blur(3px)" : "none",
+        WebkitBackdropFilter: scrolled ? "blur(3px)" : "none",
+        transition: "background 0.5s ease, backdrop-filter 0.5s ease",
       }}
     >
       {/* Logo */}
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
-        <div style={{
-          width: 30, height: 30, borderRadius: 8,
-          background: "linear-gradient(135deg, #00d4ff, #0055ee)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 0 12px rgba(0,180,255,0.35)",
-        }}>
-          <span style={{ fontFamily: mono, fontSize: 14, color: "#fff", fontWeight: 500 }}>F</span>
-        </div>
+        {/* Logo icon hidden */}
         <span style={{ fontFamily: serif, fontSize: 18, color: "#e0f0ff", letterSpacing: "0.01em" }}>
           FinDash
         </span>
@@ -140,7 +167,7 @@ export function Navbar() {
         {showDropdown && (
           <div style={{
             position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
-            background: "rgba(4,14,30,0.97)",
+            background: "rgba(8,10,18,0.97)",
             backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
             border: "1px solid rgba(0,180,255,0.18)",
             borderRadius: 12, overflow: "hidden",
@@ -246,5 +273,6 @@ export function Navbar() {
         </button>
       </div>
     </nav>
+    </>
   );
 }
