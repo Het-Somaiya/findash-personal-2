@@ -14,6 +14,13 @@ from core.ticker_resolver import extract_tickers_batch
 CATEGORIES = ['general', 'forex', 'merger']
 MAX_PER_SOURCE = 3
 TOTAL_ARTICLES = 10
+
+# Major tickers to fetch company-specific news for
+COMPANY_NEWS_TICKERS = [
+    'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN', 'TSLA',
+    'JPM', 'GS', 'BAC', 'XOM', 'CVX', 'JNJ', 'UNH', 'LLY',
+    'BA', 'CAT', 'RTX', 'DIS', 'NFLX', 'AMD', 'AVGO', 'CRM',
+]
 CACHE_TTL = 300  # 5 minutes
 
 _cache_lock = threading.Lock()
@@ -44,6 +51,33 @@ def _fetch_category(api_key, category):
         )
         resp.raise_for_status()
         return resp.json()
+    except requests.RequestException:
+        return []
+
+
+def _fetch_company_news(api_key, symbol):
+    """Fetch recent news for a specific company from Finnhub."""
+    try:
+        today = date.today()
+        from_date = (today - timedelta(days=2)).isoformat()
+        resp = requests.get(
+            'https://finnhub.io/api/v1/company-news',
+            params={
+                'symbol': symbol,
+                'from': from_date,
+                'to': today.isoformat(),
+                'token': api_key,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+        # Tag each item with the ticker it came from
+        for item in items:
+            if '_tickers' not in item:
+                item['_tickers'] = []
+            item['_tickers'].append(symbol)
+        return items
     except requests.RequestException:
         return []
 
@@ -97,32 +131,40 @@ def _fetch_quote(api_key, symbol):
 
 
 def _fetch_news():
-    """Fetch news from Finnhub, extract tickers via Azure OpenAI, fetch quotes, and cache."""
+    """Fetch company-specific news from Finnhub, score sentiment via Azure OpenAI, and cache."""
     api_key = settings.FINNHUB_API_KEY
     if not api_key:
         return
 
-    with ThreadPoolExecutor(max_workers=len(CATEGORIES)) as pool:
-        futures = [pool.submit(_fetch_category, api_key, cat) for cat in CATEGORIES]
-        all_items = []
-        for f in futures:
-            all_items.extend(f.result())
+    # Fetch company news for major tickers in parallel
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {
+            sym: pool.submit(_fetch_company_news, api_key, sym)
+            for sym in COMPANY_NEWS_TICKERS
+        }
+        # Merge results, grouping tickers by headline
+        headline_map = {}  # headline_key -> item (with _tickers merged)
+        for sym, fut in futures.items():
+            for item in fut.result():
+                key = item.get('headline', '').lower().strip()
+                if not key or not _is_quality_article(item):
+                    continue
+                if key in headline_map:
+                    # Merge ticker into existing item
+                    existing = headline_map[key]
+                    if sym not in existing.get('_tickers', []):
+                        existing['_tickers'].append(sym)
+                else:
+                    item['_tickers'] = [sym]
+                    headline_map[key] = item
 
-    all_items = [item for item in all_items if _is_quality_article(item)]
+    all_items = list(headline_map.values())
+    all_items.sort(key=lambda x: x.get('datetime', 0), reverse=True)
 
-    seen = set()
-    unique = []
-    for item in all_items:
-        key = item.get('headline', '').lower().strip()
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(item)
-
-    unique.sort(key=lambda x: x.get('datetime', 0), reverse=True)
-
+    # Diversify by source
     source_count = {}
     diversified = []
-    for item in unique:
+    for item in all_items:
         source = item.get('source', 'Unknown')
         count = source_count.get(source, 0)
         if count < MAX_PER_SOURCE:
@@ -131,21 +173,42 @@ def _fetch_news():
         if len(diversified) >= TOTAL_ARTICLES:
             break
 
+    # Use GPT for sentiment scoring AND additional ticker extraction
     gpt_results = extract_tickers_batch(diversified, api_key)
 
-    # Aggregate absolute impact scores across all headlines for top stocks
+    # Build articles: merge company news tickers with GPT-extracted tickers
     from collections import defaultdict
     impact_totals = defaultdict(float)
-    for result in gpt_results:
-        for ticker, score in result['ticker_impacts'].items():
-            impact_totals[ticker] += abs(score)
+
+    articles = []
+    all_tickers = set()
+    for item, result in zip(diversified, gpt_results):
+        # Start with known tickers from company news source
+        known_tickers = item.get('_tickers', [])
+        # Add GPT-extracted tickers (already validated against Finnhub)
+        gpt_tickers = result.get('tickers', [])
+        # Merge: known first, then GPT extras (deduplicated), cap at 4
+        merged = list(dict.fromkeys(known_tickers + gpt_tickers))[:4]
+        if not merged:
+            continue
+        all_tickers.update(merged)
+        for t in merged:
+            impact_totals[t] += abs(result.get('sentiment', 0))
+        articles.append({
+            'id': item.get('id'),
+            'headline': _clean_headline(item.get('headline', '')),
+            'source': item.get('source', ''),
+            'time': _relative_time(item.get('datetime', 0)),
+            'tickers': merged,
+            'sentiment': result.get('sentiment', 0),
+            'url': item.get('url', ''),
+            'image': item.get('image', ''),
+            'summary': item.get('summary', ''),
+        })
+
     top_stocks = sorted(impact_totals, key=lambda t: impact_totals[t], reverse=True)[:4]
 
-    # Collect all unique tickers and fetch quotes in parallel
-    all_tickers = set()
-    for result in gpt_results:
-        all_tickers.update(result['tickers'])
-
+    # Fetch quotes for all tickers
     quotes = {}
     if all_tickers:
         with ThreadPoolExecutor(max_workers=10) as pool:
@@ -155,20 +218,6 @@ def _fetch_news():
             }
             for sym, fut in quote_futures.items():
                 quotes[sym] = fut.result()
-
-    articles = []
-    for item, result in zip(diversified, gpt_results):
-        articles.append({
-            'id': item.get('id'),
-            'headline': _clean_headline(item.get('headline', '')),
-            'source': item.get('source', ''),
-            'time': _relative_time(item.get('datetime', 0)),
-            'tickers': result['tickers'],
-            'sentiment': result['sentiment'],
-            'url': item.get('url', ''),
-            'image': item.get('image', ''),
-            'summary': item.get('summary', ''),
-        })
 
     # Build top 3 sentiment signals — most extreme headlines
     signals = []

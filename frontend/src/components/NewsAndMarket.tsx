@@ -259,10 +259,12 @@ export function NewsAndMarket() {
                   rel="noopener noreferrer"
                   style={itemStyle}
                   onMouseEnter={() => {
+                    setHoveredIndex(i);
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                     setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
+                    setHoveredIndex(null);
                     setHoveredTickers(null);
                     setHoveredId(null);
                   }}
@@ -274,10 +276,12 @@ export function NewsAndMarket() {
                   key={n.id}
                   style={itemStyle}
                   onMouseEnter={() => {
+                    setHoveredIndex(i);
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                     setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
+                    setHoveredIndex(null);
                     setHoveredTickers(null);
                     setHoveredId(null);
                   }}
