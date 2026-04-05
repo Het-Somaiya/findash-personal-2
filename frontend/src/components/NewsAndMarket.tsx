@@ -218,9 +218,9 @@ export function NewsAndMarket() {
                 boxShadow: isHovered ? "0 0 20px rgba(0,180,255,0.12)" : "none",
                 border: "none",
                 transform: isHovered ? "scale(1.012)" : "scale(1)",
-                transition: "transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease",
+                transition: "transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.2s ease",
                 display: "flex" as const, flexDirection: "column" as const, gap: 9,
-                cursor: "pointer" as const, transition: "all 0.2s",
+                cursor: "pointer" as const,
                 textDecoration: "none",
               };
 
@@ -259,12 +259,12 @@ export function NewsAndMarket() {
                   rel="noopener noreferrer"
                   style={itemStyle}
                   onMouseEnter={() => {
-                    setHoveredIndex(i);
+
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                     setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
-                    setHoveredIndex(null);
+
                     setHoveredTickers(null);
                     setHoveredId(null);
                   }}
@@ -276,12 +276,12 @@ export function NewsAndMarket() {
                   key={n.id}
                   style={itemStyle}
                   onMouseEnter={() => {
-                    setHoveredIndex(i);
+
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                     setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
-                    setHoveredIndex(null);
+
                     setHoveredTickers(null);
                     setHoveredId(null);
                   }}
