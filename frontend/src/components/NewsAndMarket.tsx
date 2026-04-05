@@ -100,6 +100,7 @@ export function NewsAndMarket() {
   const [topStocks,    setTopStocks]    = useState<string[]>([]);
   const [topSignals,   setTopSignals]   = useState<TopSignal[]>([]);
   const [hoveredTickers, setHoveredTickers] = useState<string[] | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [sparklines, setSparklines] = useState<Record<string, BarPoint[]>>({});
   const sparklineCache = useRef<Record<string, BarPoint[]>>({});
 
@@ -182,17 +183,18 @@ export function NewsAndMarket() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {articles.map((n, i) => {
-              const isTop = i === 0;
+              const isHighlighted = hoveredIndex === null ? i === 0 : hoveredIndex === i;
               const isBot = i === articles.length - 1;
+              const isFirst = i === 0;
               const baseBg = sentimentBackground(n.sentimentScore)
-                || (isTop ? "rgba(0,28,58,0.65)" : "rgba(8,20,36,0.45)");
+                || (isHighlighted ? "rgba(0,28,58,0.65)" : "rgba(8,20,36,0.45)");
 
               const itemStyle = {
                 ...glass,
-                borderRadius: isTop ? "16px 16px 8px 8px" : isBot ? "8px 8px 16px 16px" : 8,
-                padding: isTop ? "22px 24px" : "16px 22px",
+                borderRadius: isFirst ? "16px 16px 8px 8px" : isBot ? "8px 8px 16px 16px" : 8,
+                padding: isHighlighted ? "22px 24px" : "16px 22px",
                 background: baseBg,
-                borderColor: isTop ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)",
+                borderColor: isHighlighted ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)",
                 display: "flex" as const, flexDirection: "column" as const, gap: 9,
                 cursor: "pointer" as const, transition: "all 0.2s",
                 textDecoration: "none",
@@ -213,9 +215,9 @@ export function NewsAndMarket() {
                     )}
                   </div>
                   <p style={{
-                    fontFamily: isTop ? serif : sans,
-                    fontSize: isTop ? 19 : 14,
-                    color: isTop ? "#eaf4ff" : "rgba(180,210,255,0.75)",
+                    fontFamily: isHighlighted ? serif : sans,
+                    fontSize: isHighlighted ? 19 : 14,
+                    color: isHighlighted ? "#eaf4ff" : "rgba(180,210,255,0.75)",
                     lineHeight: 1.45, margin: 0,
                   }}>
                     {n.headline}
@@ -231,9 +233,11 @@ export function NewsAndMarket() {
                   rel="noopener noreferrer"
                   style={itemStyle}
                   onMouseEnter={() => {
+                    setHoveredIndex(i);
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                   }}
                   onMouseLeave={() => {
+                    setHoveredIndex(null);
                     setHoveredTickers(null);
                   }}
                 >
@@ -244,9 +248,11 @@ export function NewsAndMarket() {
                   key={n.id}
                   style={itemStyle}
                   onMouseEnter={() => {
+                    setHoveredIndex(i);
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
                   }}
                   onMouseLeave={() => {
+                    setHoveredIndex(null);
                     setHoveredTickers(null);
                   }}
                 >
