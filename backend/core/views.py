@@ -352,6 +352,13 @@ def stock_asset(request):
     if not api_key:
         return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
 
+    # Check ticker cache (populated by market overview hero fetch)
+    cached = None
+    with _ticker_data_lock:
+        entry = _ticker_data.get(symbol)
+        if entry and time.time() - entry["ts"] < OVERVIEW_TTL:
+            cached = entry
+
     def fetch_quote():
         return requests.get('https://finnhub.io/api/v1/quote',
                             params={'symbol': symbol, 'token': api_key}, timeout=5).json()
@@ -365,13 +372,25 @@ def stock_asset(request):
                             params={'symbol': symbol, 'metric': 'all', 'token': api_key}, timeout=5).json()
 
     try:
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            qf = pool.submit(fetch_quote)
-            pf = pool.submit(fetch_profile)
-            mf = pool.submit(fetch_metrics)
-            quote   = qf.result()
-            profile = pf.result()
-            metrics = mf.result().get('metric', {})
+        if cached:
+            # Reuse quote + metrics from hero, only fetch profile
+            quote = cached["quote"]
+            metrics = cached["metrics"]
+            try:
+                profile = fetch_profile()
+            except requests.RequestException:
+                profile = {}
+        else:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                qf = pool.submit(fetch_quote)
+                pf = pool.submit(fetch_profile)
+                mf = pool.submit(fetch_metrics)
+                quote   = qf.result()
+                profile = pf.result()
+                metrics = mf.result().get('metric', {})
+            # Cache for future lookups
+            with _ticker_data_lock:
+                _ticker_data[symbol] = {"quote": quote, "metrics": metrics, "ts": time.time()}
     except requests.RequestException as e:
         return Response({'error': str(e)}, status=502)
 
@@ -384,14 +403,27 @@ def stock_asset(request):
     w52_low  = metrics.get('52WeekLow')  or price
     w52_pos  = int((price - w52_low) / (w52_high - w52_low) * 100) if w52_high > w52_low else 50
 
-    pe      = metrics.get('peAnnual')
-    fwd_pe  = metrics.get('peFwd')
-    beta    = metrics.get('beta') or 1.0
-    eps     = metrics.get('epsAnnualTTM') or metrics.get('epsBasicExclExtraAnnual')
-    div_yld = metrics.get('dividendYieldIndicatedAnnual')
+    pe       = metrics.get('peAnnual')
+    fwd_pe   = metrics.get('forwardPE') or metrics.get('peFwd')
+    beta     = metrics.get('beta') or 1.0
+    eps      = metrics.get('epsTTM') or metrics.get('epsBasicExclExtraItemsTTM')
+    div_yld  = metrics.get('dividendYieldIndicatedAnnual')
+    peg      = metrics.get('pegTTM')
+
     rev_grow = metrics.get('revenueGrowthTTMYoy')
     if rev_grow is not None:
         rev_grow = round(rev_grow, 1)
+    rev_grow_qoq_raw = metrics.get('revenueGrowthQuarterlyYoy')
+    rev_grow_qoq = [round(rev_grow_qoq_raw, 1)] if rev_grow_qoq_raw is not None else None
+
+    avg_vol_raw = metrics.get('10DayAverageTradingVolume')  # in millions
+    avg_vol = round(avg_vol_raw * 1_000_000) if avg_vol_raw else None
+    vol_ratio = round(volume / avg_vol, 2) if avg_vol and volume else 1.0
+
+    # Free cash flow: derive from EV and EV/FCF ratio
+    ev = metrics.get('enterpriseValue')
+    ev_fcf = metrics.get('currentEv/freeCashFlowTTM')
+    fcf = round(ev / ev_fcf) if ev and ev_fcf and ev_fcf != 0 else None
 
     return Response({
         'ticker':               symbol,
@@ -404,15 +436,15 @@ def stock_asset(request):
         'changePct':            change_pct,
         'up':                   change_pct >= 0,
         'volume':               _fmt_volume(volume),
-        'avgVolume':            '—',
-        'volRatio':             1.0,
-        'marketCap':            _fmt_market_cap(profile.get('marketCapitalization')),
+        'avgVolume':            _fmt_volume(avg_vol) if avg_vol else '—',
+        'volRatio':             vol_ratio,
+        'marketCap':            _fmt_market_cap(profile.get('marketCapitalization') or metrics.get('marketCapitalization')),
         'pe':                   round(pe, 1) if pe else None,
         'forwardPe':            round(fwd_pe, 1) if fwd_pe else None,
-        'peg':                  None,
+        'peg':                  round(peg, 2) if peg else None,
         'eps':                  round(eps, 2) if eps else None,
         'revenueGrowth':        rev_grow,
-        'revenueGrowthQoQ':     None,
+        'revenueGrowthQoQ':     rev_grow_qoq,
         'week52High':           w52_high,
         'week52Low':            w52_low,
         'week52Pos':            w52_pos,
@@ -425,7 +457,7 @@ def stock_asset(request):
         'insiderActivity':      'neutral',
         'insiderNet':           0,
         'dividendYield':        round(div_yld, 2) if div_yld else None,
-        'freeCashFlow':         None,
+        'freeCashFlow':         _fmt_market_cap(fcf) if fcf else None,
         'description':          profile.get('description') or '',
         'chartSeed':            abs(hash(symbol)) % 1000,
         'chartTrend':           1 if change_pct >= 0 else -1,
@@ -557,6 +589,10 @@ _overview_cache   = {"data": None, "fetched_at": 0}
 _overview_refresh = False   # True while a background refresh is running
 OVERVIEW_TTL      = 900     # 15 min
 
+# Per-ticker raw data cache — populated by overview, consumed by stock_asset
+_ticker_data_lock = threading.Lock()
+_ticker_data = {}  # symbol -> {"quote": {}, "metrics": {}, "ts": float}
+
 # Limit concurrent Finnhub connections (not per-minute — just concurrency)
 _finnhub_sem = threading.Semaphore(8)
 
@@ -599,6 +635,9 @@ def _do_overview_fetch():
                         except (KeyError, ValueError):
                             pass
                     days_to_earnings = best
+            # Cache raw data for stock_asset reuse
+            with _ticker_data_lock:
+                _ticker_data[sym] = {"quote": q, "metrics": m, "ts": time.time()}
             return sym, q, m, days_to_earnings
         except Exception:
             return sym, {}, {}, None
@@ -654,6 +693,61 @@ def market_overview(request):
         cached = _overview_cache["data"]
 
     return Response(cached if cached else {"assets": [], "loading": True})
+
+
+# ─── Ticker Search ────────────────────────────────────────────────────────────
+
+_TYPE_MAP = {
+    'Common Stock': 'stock',
+    'ADR': 'stock',
+    'ETP': 'etf',
+    'ETF': 'etf',
+    'Mutual Fund': 'etf',
+    'REIT': 'stock',
+    'Index': 'index',
+    'Crypto': 'crypto',
+}
+
+@api_view(['GET'])
+def ticker_search(request):
+    """Search for ticker symbols using Finnhub symbol lookup."""
+    query = request.query_params.get('q', '').strip()
+    if not query:
+        return Response({'results': []})
+
+    api_key = settings.FINNHUB_API_KEY
+    if not api_key:
+        return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
+
+    try:
+        resp = requests.get(
+            'https://finnhub.io/api/v1/search',
+            params={'q': query, 'token': api_key},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        raw = resp.json().get('result', [])
+    except requests.RequestException:
+        return Response({'results': []})
+
+    results = []
+    for item in raw:
+        symbol = item.get('displaySymbol', '')
+        # Filter to US-traded symbols (no dots like .TO, .DE)
+        if '.' in symbol:
+            continue
+        raw_type = item.get('type', '')
+        mapped_type = _TYPE_MAP.get(raw_type, 'stock')
+        results.append({
+            'symbol': symbol,
+            'name': (item.get('description') or symbol).title(),
+            'type': mapped_type,
+            'exchange': item.get('exchange', ''),
+        })
+        if len(results) >= 8:
+            break
+
+    return Response({'results': results})
 
 
 @api_view(['GET'])

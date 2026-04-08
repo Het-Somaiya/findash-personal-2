@@ -207,17 +207,15 @@ export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapsh
 
 export async function searchTickers(query: string): Promise<TickerSuggestion[]> {
   try {
-    if (MOCK) throw new Error("mock");
-    const data = await massiveFetch<MassiveSearchResponse>(
-      `/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&market=stocks&limit=8`
+    const res = await fetch(
+      `${BACKEND_BASE}/api/search/?q=${encodeURIComponent(query)}`,
+      { signal: AbortSignal.timeout(5000) },
     );
-    return (data.results ?? []).map(r => ({
-      symbol:   r.ticker,
-      name:     r.name,
-      type:     massiveTypeToLocal(r.type),
-      exchange: r.primary_exchange,
-    }));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { results: TickerSuggestion[] } = await res.json();
+    return data.results ?? [];
   } catch {
+    // Fallback to local filter if backend is down
     const q = query.toLowerCase();
     return MOCK_SUGGESTIONS
       .filter(s => s.symbol.toLowerCase().startsWith(q) || s.name.toLowerCase().includes(q))
