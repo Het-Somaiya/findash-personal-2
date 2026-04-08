@@ -478,8 +478,8 @@ function OwnershipRing({
   );
 }
 
-function RevenueBar({ growth, data }: { growth: number | null; data: number[] }) {
-  if (growth === null) {
+function RevenueBar({ growth, data }: { growth: number | null; data: number[] | null }) {
+  if (growth === null || !data || data.length === 0) {
     return (
       <div style={T}>
         <div style={{ ...LABEL, marginBottom: 4 }}>REVENUE GROWTH YOY</div>
