@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../lib/AuthContext";
 import { searchTickers, type TickerSuggestion } from "../lib/api";
 import { SearchPanel, ASSET_DB, type AssetData } from "./SearchPanel";
 
@@ -37,6 +39,8 @@ const mono  = "'JetBrains Mono', monospace";
 export function Navbar() {
   const navbarRef = useRef<HTMLDivElement>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout>>();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const [query,         setQuery]         = useState("");
   const [suggIdx,       setSuggIdx]       = useState(0);
@@ -248,29 +252,59 @@ export function Navbar() {
             {l}
           </span>
         ))}
-        <span
-          style={{
-            color: "rgba(200,225,255,0.55)", fontFamily: sans,
-            fontSize: 13, cursor: "pointer", transition: "color 0.2s",
-          }}
-          onMouseEnter={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.9)")}
-          onMouseLeave={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.55)")}
-        >
-          Sign In
-        </span>
-        <button
-          style={{
-            padding: "7px 18px", borderRadius: 8,
-            background: "rgba(0,180,255,0.14)",
-            border: "1px solid rgba(0,180,255,0.35)",
-            color: "#00d4ff", fontSize: 13, fontFamily: sans,
-            fontWeight: 500, cursor: "pointer", transition: "background 0.2s",
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,180,255,0.28)")}
-          onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,180,255,0.14)")}
-        >
-          Register Free
-        </button>
+
+        {user ? (
+          <>
+            <span style={{
+              color: "rgba(200,225,255,0.75)", fontFamily: sans,
+              fontSize: 13, letterSpacing: "0.02em",
+            }}>
+              {user.name || user.email}
+            </span>
+            <button
+              onClick={async () => { await logout(); navigate("/"); }}
+              style={{
+                padding: "7px 18px", borderRadius: 8,
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "rgba(200,225,255,0.55)", fontSize: 13, fontFamily: sans,
+                cursor: "pointer", transition: "background 0.2s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+            >
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <>
+            <span
+              onClick={() => navigate("/login")}
+              style={{
+                color: "rgba(200,225,255,0.55)", fontFamily: sans,
+                fontSize: 13, cursor: "pointer", transition: "color 0.2s",
+              }}
+              onMouseEnter={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.9)")}
+              onMouseLeave={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.55)")}
+            >
+              Sign In
+            </span>
+            <button
+              onClick={() => navigate("/register")}
+              style={{
+                padding: "7px 18px", borderRadius: 8,
+                background: "rgba(0,180,255,0.14)",
+                border: "1px solid rgba(0,180,255,0.35)",
+                color: "#00d4ff", fontSize: 13, fontFamily: sans,
+                fontWeight: 500, cursor: "pointer", transition: "background 0.2s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,180,255,0.28)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,180,255,0.14)")}
+            >
+              Register Free
+            </button>
+          </>
+        )}
       </div>
     </nav>
     </>
