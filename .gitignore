@@ -1,6 +1,7 @@
 # Frontend
 frontend/node_modules/
 frontend/dist/
+*.tsbuildinfo
 frontend/.env
 
 # Backend
@@ -18,4 +19,5 @@ CLAUDE.md
 # OS
 .DS_Store
 
+# Root
 node_modules/
