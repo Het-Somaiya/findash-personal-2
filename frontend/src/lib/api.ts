@@ -9,11 +9,46 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY ?? "YOUR_MASSIVE_API_KEY";
-const MASSIVE_BASE    = "https://api.massive.com/v1";
-const MOCK            = true; // flip to false with a real Massive key
+import axios from "axios";
+
+const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY ?? "";
+const MASSIVE_BASE    = "https://api.massive.com";
+// Automatically uses live data when a real key is provided
+const MOCK = !MASSIVE_API_KEY || MASSIVE_API_KEY === "your-massive-api-key-here";
 
 const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
+// Create an Axios instance for the Django backend
+const api = axios.create({
+  baseURL: BACKEND_BASE,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Request Interceptor: Automatically attach JWT token to every request
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("findash_token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response Interceptor: Handle session expiration
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("findash_token");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -124,9 +159,8 @@ function quoteToSnapshot(q: Quote): MarketSnapshot {
 }
 
 async function massiveFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${MASSIVE_BASE}${path}`, {
-    headers: { "X-API-Key": MASSIVE_API_KEY, "Content-Type": "application/json" },
-  });
+  const separator = path.includes("?") ? "&" : "?";
+  const res = await fetch(`${MASSIVE_BASE}${path}${separator}apiKey=${MASSIVE_API_KEY}`);
   if (!res.ok) throw new Error(`Massive API error: ${res.status}`);
   return res.json();
 }
@@ -147,12 +181,70 @@ function deriveSentiment(headline: string): "positive" | "negative" | "mixed" {
 
 // ─── Market data API ──────────────────────────────────────────────────────────
 
+// Response shapes from Massive.com REST API
+interface MassiveSnapshotTicker {
+  ticker:           string;
+  todaysChange:     number;
+  todaysChangePerc: number;
+  updated:          number;
+  day?:  { o: number; h: number; l: number; c: number; v: number; vw: number };
+  prevDay?: { c: number };
+}
+interface MassiveSnapshotResponse {
+  status:  string;
+  tickers: MassiveSnapshotTicker[];
+}
+interface MassiveTickerResult {
+  ticker:           string;
+  name:             string;
+  type:             string;
+  primary_exchange: string;
+}
+interface MassiveSearchResponse {
+  status:  string;
+  results: MassiveTickerResult[];
+}
+
+function massiveTypeToLocal(t: string): TickerSuggestion["type"] {
+  const upper = t.toUpperCase();
+  if (upper === "ETF")   return "etf";
+  if (upper === "INDEX") return "index";
+  if (upper === "CRYPTO" || upper === "X") return "crypto";
+  return "stock"; // CS, ADRC, etc.
+}
+
 export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapshot[]> {
   try {
-    if (MOCK) throw new Error("mock");
-    const results = await massiveFetch<Quote[]>(`/quotes?symbols=${symbols.join(",")}`);
-    return results.map(quoteToSnapshot);
+    // 1. Use the 'api' instance to call the backend (Interceptor adds the token)
+    const res = await api.get("/api/quotes/", {
+      params: { symbols: symbols.join(",") }
+    });
+    
+    const data = res.data;
+
+    // 2. Map the raw backend data into the format the UI expects
+    return symbols.map(sym => {
+      const q = data.quotes?.[sym];
+      
+      // If backend data is missing for this symbol, try to use a mock fallback
+      if (!q || !q.price) {
+        const mock = MOCK_QUOTES[sym];
+        return mock ? quoteToSnapshot(mock) : { label: sym, value: "—", change: "—", up: true };
+      }
+
+      // Convert the backend quote format to the Snapshot format
+      return quoteToSnapshot({
+        symbol: sym, 
+        name: MOCK_QUOTES[sym]?.name ?? sym,
+        price: q.price, 
+        change: q.change, 
+        changePct: q.changePct,
+        volume: 0, 
+        lastUpdated: "",
+      });
+    });
   } catch {
+    // 3. Complete Fallback: If the server is down, use all mock data
     return symbols.map(sym => {
       const q = MOCK_QUOTES[sym];
       return q ? quoteToSnapshot(q) : { label: sym, value: "—", change: "—", up: true };
@@ -162,9 +254,27 @@ export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapsh
 
 export async function searchTickers(query: string): Promise<TickerSuggestion[]> {
   try {
+    // If no API key is provided, jump straight to the 'catch' block to use mock data
     if (MOCK) throw new Error("mock");
-    return await massiveFetch<TickerSuggestion[]>(`/search?q=${encodeURIComponent(query)}&limit=8`);
+
+    const res = await axios.get(`${MASSIVE_BASE}/v3/reference/tickers`, {
+      params: {
+        search: query,
+        active: "true",
+        market: "stocks",
+        limit: 8
+      },
+      headers: { "Authorization": `Bearer ${MASSIVE_API_KEY}` }
+    });
+
+    return (res.data.results ?? []).map((r: any) => ({
+      symbol:   r.ticker,
+      name:     r.name,
+      type:     massiveTypeToLocal(r.type),
+      exchange: r.primary_exchange,
+    }));
   } catch {
+    // FALLBACK: Use local mock data if the API fails or if MOCK = true
     const q = query.toLowerCase();
     return MOCK_SUGGESTIONS
       .filter(s => s.symbol.toLowerCase().startsWith(q) || s.name.toLowerCase().includes(q))
@@ -193,11 +303,15 @@ const FALLBACK_NEWS: NewsArticle[] = [
 
 export async function getNews(): Promise<NewsResponse> {
   try {
-    const res = await fetch(`${BACKEND_BASE}/api/news/`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    // 1. Use the 'api' instance to call the backend with an 8-second timeout
+    const res = await api.get("/api/news/", { 
+      timeout: 8000 
+    });
+    
+    const data = res.data;
+    
 
-    // Natasha's backend returns { articles, quotes, topStocks, topSignals }
+    // 2. Handle the response data (Backend returns { articles, quotes, topStocks, topSignals })
     const rawArticles: Array<{
       id: number | string; headline: string; source: string;
       time: string; tickers: string[]; url: string; image?: string; summary?: string;
@@ -219,8 +333,38 @@ export async function getNews(): Promise<NewsResponse> {
       topStocks: data.topStocks || [],
       topSignals: data.topSignals || [],
     };
-  } catch {
-    return { articles: FALLBACK_NEWS, fromBackend: false, quotes: {}, topStocks: [], topSignals: [] };
+  } catch (error) {
+    // 3. Fallback to hardcoded news if the API is unreachable
+    return { 
+      articles: FALLBACK_NEWS, 
+      fromBackend: false, 
+      quotes: {}, 
+      topStocks: [], 
+      topSignals: [] 
+    };
+  }
+}
+
+// ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
+
+export interface BarPoint { t: number; c: number; }
+
+const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
+
+export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
+  try {
+    // 1. Use the 'api' instance to call the backend (Interceptor adds the token)
+    const res = await api.get("/api/bars/", {
+      params: { symbol }
+    });
+    
+    const data = res.data;
+
+    // 2. Return the bars if they exist, otherwise fallback to a flat line
+    return data.bars && data.bars.length > 0 ? data.bars : FLAT_LINE;
+  } catch (error) {
+    // 3. Fallback: Return a zeroed-out line so the UI remains stable
+    return FLAT_LINE;
   }
 }
 

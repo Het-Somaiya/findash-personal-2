@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { getNews, getMarketSnapshot, type NewsArticle, type MarketSnapshot, type BackendQuote, type TopSignal } from "../lib/api";
+import { useState, useEffect, useRef } from "react";
+import { LineChart, Line, YAxis } from "recharts";
+import { getNews, getMarketSnapshot, getTicker24hBars, type NewsArticle, type MarketSnapshot, type BackendQuote, type TopSignal, type BarPoint } from "../lib/api";
 
 const FALLBACK_SIGNALS = [
   { ticker: "NVDA", signal: "Options volume Z-score: 3.1 — unusually elevated call buying", type: "FLOW"  },
@@ -18,12 +19,36 @@ const SIGNAL_TYPE_COLORS: Record<string, string> = {
 
 const SNAPSHOT_SYMBOLS = ["SPX", "NDX", "SPY", "VIX", "DXY", "BTC"];
 
-/** Intensity-based sentiment background using backend's numeric score (-10 to +10) */
-function sentimentBackground(score: number | null): string | undefined {
-  if (!score || score === 0) return undefined;
-  const intensity = Math.abs(score) / 10 * 0.15;
-  if (score > 0) return `rgba(0, 210, 130, ${intensity})`;
-  return `rgba(255, 80, 100, ${intensity})`;
+/**
+ * Rank-normalized sentiment gradient.
+ * Instead of mapping raw scores to colors (which clusters when scores are similar),
+ * we map the article's RANK within the feed to the color scale.
+ * → Most bearish article always = deepest red
+ * → Most bullish article always = deepest green
+ * → Neutral/middle = dark glass
+ * This guarantees visible contrast regardless of score clustering.
+ */
+function buildSentimentStyles(articles: { sentimentScore: number | null }[]): (string | undefined)[] {
+  const scores = articles.map(a => a.sentimentScore ?? 0);
+  const positives = scores.filter(s => s > 0);
+  const negatives = scores.filter(s => s < 0);
+  const maxPos = positives.length > 0 ? Math.max(...positives) : 1;
+  const minNeg = negatives.length > 0 ? Math.min(...negatives) : -1;
+
+  return scores.map(score => {
+    if (!score || score === 0) return undefined;
+    if (score > 0) {
+      // rank within positives: 0.25 (weakest positive) → 0.60 (strongest positive)
+      const t = score / maxPos;
+      const peak = 0.25 + t * 0.35;
+      return `linear-gradient(135deg, rgba(0,210,100,${peak.toFixed(2)}) 0%, rgba(0,210,100,0.04) 55%, rgba(6,16,30,0.75) 100%)`;
+    } else {
+      // rank within negatives: 0.25 (weakest negative) → 0.60 (strongest negative)
+      const t = score / minNeg;
+      const peak = 0.25 + t * 0.35;
+      return `linear-gradient(135deg, rgba(255,55,55,${peak.toFixed(2)}) 0%, rgba(255,55,55,0.04) 55%, rgba(6,16,30,0.75) 100%)`;
+    }
+  });
 }
 
 const serif = "'DM Serif Display', serif";
@@ -31,11 +56,11 @@ const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
 const glass = {
-  background: "rgba(8,20,36,0.55)",
+  background: "rgba(10,12,20,0.55)",
   backdropFilter: "blur(18px)",
   WebkitBackdropFilter: "blur(18px)",
-  border: "1px solid rgba(0,180,255,0.14)",
   borderRadius: 16,
+  boxShadow: "0 0 5px rgba(0,180,255,0.05)",
 };
 
 function TagPill({ ticker }: { ticker: string }) {
@@ -72,6 +97,22 @@ function timeAgoLabel(refreshedAt: number | null) {
   return `REFRESHED ${Math.floor(diff / 3600)}H AGO`;
 }
 
+function Sparkline({ data, up }: { data: BarPoint[]; up: boolean }) {
+  return (
+    <LineChart width={80} height={32} data={data} margin={{ top: 4, right: 2, bottom: 4, left: 2 }}>
+      <YAxis domain={['dataMin', 'dataMax']} hide />
+      <Line
+        type="monotone"
+        dataKey="c"
+        stroke={up ? "#00d282" : "#ff5064"}
+        strokeWidth={1.5}
+        dot={false}
+        isAnimationActive={false}
+      />
+    </LineChart>
+  );
+}
+
 export function NewsAndMarket() {
   const [articles,     setArticles]     = useState<NewsArticle[]>([]);
   const [snapshot,     setSnapshot]     = useState<MarketSnapshot[]>([]);
@@ -83,6 +124,17 @@ export function NewsAndMarket() {
   const [topStocks,    setTopStocks]    = useState<string[]>([]);
   const [topSignals,   setTopSignals]   = useState<TopSignal[]>([]);
   const [hoveredTickers, setHoveredTickers] = useState<string[] | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [sparklines, setSparklines] = useState<Record<string, BarPoint[]>>({});
+  const sparklineCache = useRef<Record<string, BarPoint[]>>({});
+
+  const fetchSparklines = async (tickers: string[]) => {
+    const missing = tickers.filter(t => !sparklineCache.current[t]);
+    await Promise.all(missing.map(async t => {
+      sparklineCache.current[t] = await getTicker24hBars(t);
+    }));
+    setSparklines({ ...sparklineCache.current });
+  };
 
   useEffect(() => {
     getNews().then(({ articles: a, fromBackend: live, quotes, topStocks: ts, topSignals: sig }) => {
@@ -98,6 +150,14 @@ export function NewsAndMarket() {
       if (data.length) setSnapshot(data);
     });
   }, []);
+
+  useEffect(() => {
+    if (topStocks.length > 0) fetchSparklines(topStocks);
+  }, [topStocks]);
+
+  useEffect(() => {
+    if (hoveredTickers && hoveredTickers.length > 0) fetchSparklines(hoveredTickers);
+  }, [hoveredTickers]);
 
   const displaySnapshot: MarketSnapshot[] = snapshot.length > 0 ? snapshot : [
     { label: "SPX", value: "5,842.31",  change: "+0.41%", up: true  },
@@ -139,27 +199,28 @@ export function NewsAndMarket() {
                 ...glass,
                 height: i === 0 ? 88 : 62,
                 borderRadius: i === 0 ? "16px 16px 8px 8px" : 8,
-                background: "rgba(8,20,36,0.35)",
+                background: "rgba(10,12,20,0.35)",
                 animation: "shimmer 1.5s infinite",
               }} />
             ))}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {articles.map((n, i) => {
-              const isTop = i === 0;
+            {buildSentimentStyles(articles).map((sentBg, i) => { const n = articles[i];
+              const isHovered = n.id === hoveredId;
               const isBot = i === articles.length - 1;
-              const baseBg = sentimentBackground(n.sentimentScore)
-                || (isTop ? "rgba(0,28,58,0.65)" : "rgba(8,20,36,0.45)");
-
+              const baseBg   = sentBg || "rgba(8,20,36,0.55)";
               const itemStyle = {
                 ...glass,
-                borderRadius: isTop ? "16px 16px 8px 8px" : isBot ? "8px 8px 16px 16px" : 8,
-                padding: isTop ? "22px 24px" : "16px 22px",
+                borderRadius: isBot ? "8px 8px 16px 16px" : 8,
+                padding: "16px 22px",
                 background: baseBg,
-                borderColor: isTop ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)",
+                boxShadow: isHovered ? "0 0 20px rgba(0,180,255,0.12)" : "none",
+                border: "none",
+                transform: isHovered ? "scale(1.012)" : "scale(1)",
+                transition: "transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.2s ease",
                 display: "flex" as const, flexDirection: "column" as const, gap: 9,
-                cursor: "pointer" as const, transition: "all 0.2s",
+                cursor: "pointer" as const,
                 textDecoration: "none",
               };
 
@@ -178,10 +239,12 @@ export function NewsAndMarket() {
                     )}
                   </div>
                   <p style={{
-                    fontFamily: isTop ? serif : sans,
-                    fontSize: isTop ? 19 : 14,
-                    color: isTop ? "#eaf4ff" : "rgba(180,210,255,0.75)",
+                    fontFamily: sans,
+                    fontSize: 14,
+                    color: isHovered ? "#eaf4ff" : "rgba(180,210,255,0.72)",
                     lineHeight: 1.45, margin: 0,
+                    fontWeight: isHovered ? 500 : 400,
+                    transition: "color 0.2s, font-weight 0.2s",
                   }}>
                     {n.headline}
                   </p>
@@ -196,10 +259,14 @@ export function NewsAndMarket() {
                   rel="noopener noreferrer"
                   style={itemStyle}
                   onMouseEnter={() => {
+
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
+                    setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
+
                     setHoveredTickers(null);
+                    setHoveredId(null);
                   }}
                 >
                   {content}
@@ -209,10 +276,14 @@ export function NewsAndMarket() {
                   key={n.id}
                   style={itemStyle}
                   onMouseEnter={() => {
+
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
+                    setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
+
                     setHoveredTickers(null);
+                    setHoveredId(null);
                   }}
                 >
                   {content}
@@ -251,10 +322,11 @@ export function NewsAndMarket() {
                       ? "1px solid rgba(0,180,255,0.07)" : "none",
                   }}
                 >
-                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)", width: 40, flexShrink: 0 }}>
                     {ticker}
                   </span>
-                  <div style={{ textAlign: "right" }}>
+                  <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
+                  <div style={{ textAlign: "right", width: 64, flexShrink: 0 }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                     </div>
@@ -290,10 +362,11 @@ export function NewsAndMarket() {
                       ? "1px solid rgba(0,180,255,0.07)" : "none",
                   }}
                 >
-                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)" }}>
+                  <span style={{ fontFamily: mono, fontSize: 12, color: "rgba(180,210,255,0.45)", width: 40, flexShrink: 0 }}>
                     {ticker}
                   </span>
-                  <div style={{ textAlign: "right" }}>
+                  <Sparkline data={sparklines[ticker] ?? [{ t: 0, c: 0 }]} up={up} />
+                  <div style={{ textAlign: "right", width: 64, flexShrink: 0 }}>
                     <div style={{ fontFamily: mono, fontSize: 13, color: "rgba(220,240,255,0.85)" }}>
                       {price ? price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                     </div>
