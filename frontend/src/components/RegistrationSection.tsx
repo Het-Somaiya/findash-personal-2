@@ -1,8 +1,16 @@
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../lib/AuthContext";
+
 const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
 export function RegistrationSection() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  if (user) return null;
+
   return (
     <section style={{
       background: "rgba(8,10,16,0.70)",
@@ -29,6 +37,7 @@ export function RegistrationSection() {
       </p>
       <div style={{ display: "flex", gap: 13, justifyContent: "center", marginBottom: 32 }}>
         <button
+          onClick={() => navigate("/register")}
           style={{
             padding: "13px 34px", borderRadius: 10,
             background: "rgba(0,180,255,0.18)",
