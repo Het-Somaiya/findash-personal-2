@@ -1,5 +1,5 @@
-asgiref==3.11.1
-Django==6.0.2
+asgiref==3.8.1
+Django==5.2
 django-cors-headers==4.6.0
 djangorestframework==3.16.1
 openai>=1.0.0

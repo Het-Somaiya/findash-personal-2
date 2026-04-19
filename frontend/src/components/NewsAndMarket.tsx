@@ -19,12 +19,36 @@ const SIGNAL_TYPE_COLORS: Record<string, string> = {
 
 const SNAPSHOT_SYMBOLS = ["SPX", "NDX", "SPY", "VIX", "DXY", "BTC"];
 
-/** Intensity-based sentiment background using backend's numeric score (-10 to +10) */
-function sentimentBackground(score: number | null): string | undefined {
-  if (!score || score === 0) return undefined;
-  const intensity = Math.abs(score) / 10 * 0.15;
-  if (score > 0) return `rgba(0, 210, 130, ${intensity})`;
-  return `rgba(255, 80, 100, ${intensity})`;
+/**
+ * Rank-normalized sentiment gradient.
+ * Instead of mapping raw scores to colors (which clusters when scores are similar),
+ * we map the article's RANK within the feed to the color scale.
+ * → Most bearish article always = deepest red
+ * → Most bullish article always = deepest green
+ * → Neutral/middle = dark glass
+ * This guarantees visible contrast regardless of score clustering.
+ */
+function buildSentimentStyles(articles: { sentimentScore: number | null }[]): (string | undefined)[] {
+  const scores = articles.map(a => a.sentimentScore ?? 0);
+  const positives = scores.filter(s => s > 0);
+  const negatives = scores.filter(s => s < 0);
+  const maxPos = positives.length > 0 ? Math.max(...positives) : 1;
+  const minNeg = negatives.length > 0 ? Math.min(...negatives) : -1;
+
+  return scores.map(score => {
+    if (!score || score === 0) return undefined;
+    if (score > 0) {
+      // rank within positives: 0.25 (weakest positive) → 0.60 (strongest positive)
+      const t = score / maxPos;
+      const peak = 0.25 + t * 0.35;
+      return `linear-gradient(135deg, rgba(0,210,100,${peak.toFixed(2)}) 0%, rgba(0,210,100,0.04) 55%, rgba(6,16,30,0.75) 100%)`;
+    } else {
+      // rank within negatives: 0.25 (weakest negative) → 0.60 (strongest negative)
+      const t = score / minNeg;
+      const peak = 0.25 + t * 0.35;
+      return `linear-gradient(135deg, rgba(255,55,55,${peak.toFixed(2)}) 0%, rgba(255,55,55,0.04) 55%, rgba(6,16,30,0.75) 100%)`;
+    }
+  });
 }
 
 const serif = "'DM Serif Display', serif";
@@ -100,6 +124,7 @@ export function NewsAndMarket() {
   const [topStocks,    setTopStocks]    = useState<string[]>([]);
   const [topSignals,   setTopSignals]   = useState<TopSignal[]>([]);
   const [hoveredTickers, setHoveredTickers] = useState<string[] | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [sparklines, setSparklines] = useState<Record<string, BarPoint[]>>({});
   const sparklineCache = useRef<Record<string, BarPoint[]>>({});
 
@@ -181,18 +206,19 @@ export function NewsAndMarket() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {articles.map((n, i) => {
-              const isTop = i === 0;
+            {buildSentimentStyles(articles).map((sentBg, i) => { const n = articles[i];
+              const isHovered = n.id === hoveredId;
               const isBot = i === articles.length - 1;
-              const baseBg = sentimentBackground(n.sentimentScore)
-                || (isTop ? "rgba(0,28,58,0.65)" : "rgba(8,20,36,0.45)");
-
+              const baseBg   = sentBg || "rgba(8,20,36,0.55)";
               const itemStyle = {
                 ...glass,
-                borderRadius: isTop ? "16px 16px 8px 8px" : isBot ? "8px 8px 16px 16px" : 8,
-                padding: isTop ? "22px 24px" : "16px 22px",
+                borderRadius: isBot ? "8px 8px 16px 16px" : 8,
+                padding: "16px 22px",
                 background: baseBg,
-                borderColor: isTop ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.10)",
+                boxShadow: isHovered ? "0 0 20px rgba(0,180,255,0.12)" : "none",
+                border: "none",
+                transform: isHovered ? "scale(1.012)" : "scale(1)",
+                transition: "transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease",
                 display: "flex" as const, flexDirection: "column" as const, gap: 9,
                 cursor: "pointer" as const, transition: "all 0.2s",
                 textDecoration: "none",
@@ -213,10 +239,12 @@ export function NewsAndMarket() {
                     )}
                   </div>
                   <p style={{
-                    fontFamily: isTop ? serif : sans,
-                    fontSize: isTop ? 19 : 14,
-                    color: isTop ? "#eaf4ff" : "rgba(180,210,255,0.75)",
+                    fontFamily: sans,
+                    fontSize: 14,
+                    color: isHovered ? "#eaf4ff" : "rgba(180,210,255,0.72)",
                     lineHeight: 1.45, margin: 0,
+                    fontWeight: isHovered ? 500 : 400,
+                    transition: "color 0.2s, font-weight 0.2s",
                   }}>
                     {n.headline}
                   </p>
@@ -232,9 +260,11 @@ export function NewsAndMarket() {
                   style={itemStyle}
                   onMouseEnter={() => {
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
+                    setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
                     setHoveredTickers(null);
+                    setHoveredId(null);
                   }}
                 >
                   {content}
@@ -245,9 +275,11 @@ export function NewsAndMarket() {
                   style={itemStyle}
                   onMouseEnter={() => {
                     if (n.tickers.length > 0) setHoveredTickers(n.tickers);
+                    setHoveredId(n.id);
                   }}
                   onMouseLeave={() => {
                     setHoveredTickers(null);
+                    setHoveredId(null);
                   }}
                 >
                   {content}

@@ -49,9 +49,12 @@ export interface CoMentionEdge {
   sameDirection: boolean;
 }
 
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
 interface MarketGlobeProps {
   assets: BubbleAsset[];
   edges?: CoMentionEdge[];
+  onTickerClick?: (asset: import("./SearchPanel").AssetData | null) => void;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -329,7 +332,7 @@ function makeDomeTexture(): THREE.CanvasTexture {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function MarketGlobe({ assets, edges = [] }: MarketGlobeProps) {
+export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobeProps) {
   const mountRef   = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const rotating   = useRef(true);
@@ -737,8 +740,40 @@ export function MarketGlobe({ assets, edges = [] }: MarketGlobeProps) {
     }
 
     function onClick() {
-      // Only toggle auto-spin if the mouse barely moved (pure click, not drag)
-      if (dragMoved < 4) rotating.current = !rotating.current;
+      if (dragMoved < 4) {
+        if (hoveredIdx >= 0 && onTickerClick) {
+          const clickedAsset = meshes[hoveredIdx]?.asset;
+          if (clickedAsset) {
+            const placeholder = {
+              ticker: clickedAsset.ticker,
+              name: clickedAsset.ticker,
+              type: "STOCK" as const,
+              sector: clickedAsset.sector,
+              price: clickedAsset.price,
+              change: 0,
+              changePct: clickedAsset.changePct,
+              up: clickedAsset.changePct >= 0,
+              volume: "—", avgVolume: "—", volRatio: 1,
+              marketCap: "—", pe: null, forwardPe: null, peg: null,
+              eps: null, revenueGrowth: null, revenueGrowthQoQ: null,
+              week52High: 0, week52Low: 0, week52Pos: 50,
+              nextEarnings: null, rsi: 50, beta: clickedAsset.beta,
+              shortFloatPct: null, daysToCover: null,
+              institutionalOwnership: 0, insiderActivity: "neutral" as const,
+              insiderNet: 0, dividendYield: null, freeCashFlow: null,
+              description: "", chartSeed: 0,
+              chartTrend: clickedAsset.changePct >= 0 ? 1 : -1,
+            };
+            onTickerClick(placeholder);
+            fetch(`${BACKEND_BASE}/api/asset/?symbol=${encodeURIComponent(clickedAsset.ticker)}`)
+              .then(r => r.json())
+              .then(data => { if (data && onTickerClick) onTickerClick(data); })
+              .catch(() => {});
+          }
+        } else {
+          rotating.current = !rotating.current;
+        }
+      }
     }
 
     renderer.domElement.addEventListener("mousedown", onMouseDown);
@@ -971,7 +1006,11 @@ export function MarketGlobe({ assets, edges = [] }: MarketGlobeProps) {
 
 // ─── LandingMarketGlobe ──────────────────────────────────────────────────────
 
-export function LandingMarketGlobe() {
+interface LandingMarketGlobeProps {
+  onTickerClick?: (asset: import("./SearchPanel").AssetData | null) => void;
+}
+
+export function LandingMarketGlobe({ onTickerClick }: LandingMarketGlobeProps = {}) {
   const [assets, setAssets] = useState<BubbleAsset[]>([]);
 
   useEffect(() => {
@@ -991,5 +1030,5 @@ export function LandingMarketGlobe() {
   }, []);
 
   if (assets.length === 0) return null;
-  return <MarketGlobe assets={assets} />;
+  return <MarketGlobe assets={assets} onTickerClick={onTickerClick} />;
 }
