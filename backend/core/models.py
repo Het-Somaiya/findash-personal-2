@@ -1,18 +1,53 @@
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.db import models
 
 
-class User(models.Model):
+class UserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra):
+        if not email:
+            raise ValueError("Email is required")
+        user = self.model(email=self.normalize_email(email), **extra)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra):
+        extra.setdefault("is_active", True)
+        return self.create_user(email, password, **extra)
+
+
+class User(AbstractBaseUser):
     email = models.CharField(max_length=255, unique=True)
     name = models.CharField(max_length=255, blank=True, null=True)
-    password_hash = models.TextField()
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = UserManager()
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["name"]
 
     class Meta:
         db_table = "users"
 
     def __str__(self):
         return self.email
+
+
+class ActiveSession(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sessions")
+    refresh_jti = models.CharField(max_length=255, unique=True, db_index=True)
+    device_info = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "active_sessions"
+
+    def __str__(self):
+        return f"{self.user.email} — {self.device_info or 'unknown'}"
 
 
 class Watchlist(models.Model):

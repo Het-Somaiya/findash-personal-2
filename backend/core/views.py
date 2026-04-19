@@ -14,6 +14,13 @@ from core.ticker_resolver import extract_tickers_batch
 CATEGORIES = ['general', 'forex', 'merger']
 MAX_PER_SOURCE = 3
 TOTAL_ARTICLES = 10
+
+# Major tickers to fetch company-specific news for
+COMPANY_NEWS_TICKERS = [
+    'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN', 'TSLA',
+    'JPM', 'GS', 'BAC', 'XOM', 'CVX', 'JNJ', 'UNH', 'LLY',
+    'BA', 'CAT', 'RTX', 'DIS', 'NFLX', 'AMD', 'AVGO', 'CRM',
+]
 CACHE_TTL = 300  # 5 minutes
 
 _cache_lock = threading.Lock()
@@ -44,6 +51,33 @@ def _fetch_category(api_key, category):
         )
         resp.raise_for_status()
         return resp.json()
+    except requests.RequestException:
+        return []
+
+
+def _fetch_company_news(api_key, symbol):
+    """Fetch recent news for a specific company from Finnhub."""
+    try:
+        today = date.today()
+        from_date = (today - timedelta(days=2)).isoformat()
+        resp = requests.get(
+            'https://finnhub.io/api/v1/company-news',
+            params={
+                'symbol': symbol,
+                'from': from_date,
+                'to': today.isoformat(),
+                'token': api_key,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+        # Tag each item with the ticker it came from
+        for item in items:
+            if '_tickers' not in item:
+                item['_tickers'] = []
+            item['_tickers'].append(symbol)
+        return items
     except requests.RequestException:
         return []
 
@@ -97,32 +131,40 @@ def _fetch_quote(api_key, symbol):
 
 
 def _fetch_news():
-    """Fetch news from Finnhub, extract tickers via Azure OpenAI, fetch quotes, and cache."""
+    """Fetch company-specific news from Finnhub, score sentiment via Azure OpenAI, and cache."""
     api_key = settings.FINNHUB_API_KEY
     if not api_key:
         return
 
-    with ThreadPoolExecutor(max_workers=len(CATEGORIES)) as pool:
-        futures = [pool.submit(_fetch_category, api_key, cat) for cat in CATEGORIES]
-        all_items = []
-        for f in futures:
-            all_items.extend(f.result())
+    # Fetch company news for major tickers in parallel
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {
+            sym: pool.submit(_fetch_company_news, api_key, sym)
+            for sym in COMPANY_NEWS_TICKERS
+        }
+        # Merge results, grouping tickers by headline
+        headline_map = {}  # headline_key -> item (with _tickers merged)
+        for sym, fut in futures.items():
+            for item in fut.result():
+                key = item.get('headline', '').lower().strip()
+                if not key or not _is_quality_article(item):
+                    continue
+                if key in headline_map:
+                    # Merge ticker into existing item
+                    existing = headline_map[key]
+                    if sym not in existing.get('_tickers', []):
+                        existing['_tickers'].append(sym)
+                else:
+                    item['_tickers'] = [sym]
+                    headline_map[key] = item
 
-    all_items = [item for item in all_items if _is_quality_article(item)]
+    all_items = list(headline_map.values())
+    all_items.sort(key=lambda x: x.get('datetime', 0), reverse=True)
 
-    seen = set()
-    unique = []
-    for item in all_items:
-        key = item.get('headline', '').lower().strip()
-        if key and key not in seen:
-            seen.add(key)
-            unique.append(item)
-
-    unique.sort(key=lambda x: x.get('datetime', 0), reverse=True)
-
+    # Diversify by source
     source_count = {}
     diversified = []
-    for item in unique:
+    for item in all_items:
         source = item.get('source', 'Unknown')
         count = source_count.get(source, 0)
         if count < MAX_PER_SOURCE:
@@ -131,21 +173,42 @@ def _fetch_news():
         if len(diversified) >= TOTAL_ARTICLES:
             break
 
+    # Use GPT for sentiment scoring AND additional ticker extraction
     gpt_results = extract_tickers_batch(diversified, api_key)
 
-    # Aggregate absolute impact scores across all headlines for top stocks
+    # Build articles: merge company news tickers with GPT-extracted tickers
     from collections import defaultdict
     impact_totals = defaultdict(float)
-    for result in gpt_results:
-        for ticker, score in result['ticker_impacts'].items():
-            impact_totals[ticker] += abs(score)
+
+    articles = []
+    all_tickers = set()
+    for item, result in zip(diversified, gpt_results):
+        # Start with known tickers from company news source
+        known_tickers = item.get('_tickers', [])
+        # Add GPT-extracted tickers (already validated against Finnhub)
+        gpt_tickers = result.get('tickers', [])
+        # Merge: known first, then GPT extras (deduplicated), cap at 4
+        merged = list(dict.fromkeys(known_tickers + gpt_tickers))[:4]
+        if not merged:
+            continue
+        all_tickers.update(merged)
+        for t in merged:
+            impact_totals[t] += abs(result.get('sentiment', 0))
+        articles.append({
+            'id': item.get('id'),
+            'headline': _clean_headline(item.get('headline', '')),
+            'source': item.get('source', ''),
+            'time': _relative_time(item.get('datetime', 0)),
+            'tickers': merged,
+            'sentiment': result.get('sentiment', 0),
+            'url': item.get('url', ''),
+            'image': item.get('image', ''),
+            'summary': item.get('summary', ''),
+        })
+
     top_stocks = sorted(impact_totals, key=lambda t: impact_totals[t], reverse=True)[:4]
 
-    # Collect all unique tickers and fetch quotes in parallel
-    all_tickers = set()
-    for result in gpt_results:
-        all_tickers.update(result['tickers'])
-
+    # Fetch quotes for all tickers
     quotes = {}
     if all_tickers:
         with ThreadPoolExecutor(max_workers=10) as pool:
@@ -155,20 +218,6 @@ def _fetch_news():
             }
             for sym, fut in quote_futures.items():
                 quotes[sym] = fut.result()
-
-    articles = []
-    for item, result in zip(diversified, gpt_results):
-        articles.append({
-            'id': item.get('id'),
-            'headline': _clean_headline(item.get('headline', '')),
-            'source': item.get('source', ''),
-            'time': _relative_time(item.get('datetime', 0)),
-            'tickers': result['tickers'],
-            'sentiment': result['sentiment'],
-            'url': item.get('url', ''),
-            'image': item.get('image', ''),
-            'summary': item.get('summary', ''),
-        })
 
     # Build top 3 sentiment signals — most extreme headlines
     signals = []
@@ -303,6 +352,13 @@ def stock_asset(request):
     if not api_key:
         return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
 
+    # Check ticker cache (populated by market overview hero fetch)
+    cached = None
+    with _ticker_data_lock:
+        entry = _ticker_data.get(symbol)
+        if entry and time.time() - entry["ts"] < OVERVIEW_TTL:
+            cached = entry
+
     def fetch_quote():
         return requests.get('https://finnhub.io/api/v1/quote',
                             params={'symbol': symbol, 'token': api_key}, timeout=5).json()
@@ -316,13 +372,25 @@ def stock_asset(request):
                             params={'symbol': symbol, 'metric': 'all', 'token': api_key}, timeout=5).json()
 
     try:
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            qf = pool.submit(fetch_quote)
-            pf = pool.submit(fetch_profile)
-            mf = pool.submit(fetch_metrics)
-            quote   = qf.result()
-            profile = pf.result()
-            metrics = mf.result().get('metric', {})
+        if cached:
+            # Reuse quote + metrics from hero, only fetch profile
+            quote = cached["quote"]
+            metrics = cached["metrics"]
+            try:
+                profile = fetch_profile()
+            except requests.RequestException:
+                profile = {}
+        else:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                qf = pool.submit(fetch_quote)
+                pf = pool.submit(fetch_profile)
+                mf = pool.submit(fetch_metrics)
+                quote   = qf.result()
+                profile = pf.result()
+                metrics = mf.result().get('metric', {})
+            # Cache for future lookups
+            with _ticker_data_lock:
+                _ticker_data[symbol] = {"quote": quote, "metrics": metrics, "ts": time.time()}
     except requests.RequestException as e:
         return Response({'error': str(e)}, status=502)
 
@@ -335,14 +403,27 @@ def stock_asset(request):
     w52_low  = metrics.get('52WeekLow')  or price
     w52_pos  = int((price - w52_low) / (w52_high - w52_low) * 100) if w52_high > w52_low else 50
 
-    pe      = metrics.get('peAnnual')
-    fwd_pe  = metrics.get('peFwd')
-    beta    = metrics.get('beta') or 1.0
-    eps     = metrics.get('epsAnnualTTM') or metrics.get('epsBasicExclExtraAnnual')
-    div_yld = metrics.get('dividendYieldIndicatedAnnual')
+    pe       = metrics.get('peAnnual')
+    fwd_pe   = metrics.get('forwardPE') or metrics.get('peFwd')
+    beta     = metrics.get('beta') or 1.0
+    eps      = metrics.get('epsTTM') or metrics.get('epsBasicExclExtraItemsTTM')
+    div_yld  = metrics.get('dividendYieldIndicatedAnnual')
+    peg      = metrics.get('pegTTM')
+
     rev_grow = metrics.get('revenueGrowthTTMYoy')
     if rev_grow is not None:
         rev_grow = round(rev_grow, 1)
+    rev_grow_qoq_raw = metrics.get('revenueGrowthQuarterlyYoy')
+    rev_grow_qoq = [round(rev_grow_qoq_raw, 1)] if rev_grow_qoq_raw is not None else None
+
+    avg_vol_raw = metrics.get('10DayAverageTradingVolume')  # in millions
+    avg_vol = round(avg_vol_raw * 1_000_000) if avg_vol_raw else None
+    vol_ratio = round(volume / avg_vol, 2) if avg_vol and volume else 1.0
+
+    # Free cash flow: derive from EV and EV/FCF ratio
+    ev = metrics.get('enterpriseValue')
+    ev_fcf = metrics.get('currentEv/freeCashFlowTTM')
+    fcf = round(ev / ev_fcf) if ev and ev_fcf and ev_fcf != 0 else None
 
     return Response({
         'ticker':               symbol,
@@ -355,15 +436,15 @@ def stock_asset(request):
         'changePct':            change_pct,
         'up':                   change_pct >= 0,
         'volume':               _fmt_volume(volume),
-        'avgVolume':            '—',
-        'volRatio':             1.0,
-        'marketCap':            _fmt_market_cap(profile.get('marketCapitalization')),
+        'avgVolume':            _fmt_volume(avg_vol) if avg_vol else '—',
+        'volRatio':             vol_ratio,
+        'marketCap':            _fmt_market_cap(profile.get('marketCapitalization') or metrics.get('marketCapitalization')),
         'pe':                   round(pe, 1) if pe else None,
         'forwardPe':            round(fwd_pe, 1) if fwd_pe else None,
-        'peg':                  None,
+        'peg':                  round(peg, 2) if peg else None,
         'eps':                  round(eps, 2) if eps else None,
         'revenueGrowth':        rev_grow,
-        'revenueGrowthQoQ':     None,
+        'revenueGrowthQoQ':     rev_grow_qoq,
         'week52High':           w52_high,
         'week52Low':            w52_low,
         'week52Pos':            w52_pos,
@@ -376,7 +457,7 @@ def stock_asset(request):
         'insiderActivity':      'neutral',
         'insiderNet':           0,
         'dividendYield':        round(div_yld, 2) if div_yld else None,
-        'freeCashFlow':         None,
+        'freeCashFlow':         _fmt_market_cap(fcf) if fcf else None,
         'description':          profile.get('description') or '',
         'chartSeed':            abs(hash(symbol)) % 1000,
         'chartTrend':           1 if change_pct >= 0 else -1,
@@ -508,6 +589,10 @@ _overview_cache   = {"data": None, "fetched_at": 0}
 _overview_refresh = False   # True while a background refresh is running
 OVERVIEW_TTL      = 900     # 15 min
 
+# Per-ticker raw data cache — populated by overview, consumed by stock_asset
+_ticker_data_lock = threading.Lock()
+_ticker_data = {}  # symbol -> {"quote": {}, "metrics": {}, "ts": float}
+
 # Limit concurrent Finnhub connections (not per-minute — just concurrency)
 _finnhub_sem = threading.Semaphore(8)
 
@@ -550,6 +635,9 @@ def _do_overview_fetch():
                         except (KeyError, ValueError):
                             pass
                     days_to_earnings = best
+            # Cache raw data for stock_asset reuse
+            with _ticker_data_lock:
+                _ticker_data[sym] = {"quote": q, "metrics": m, "ts": time.time()}
             return sym, q, m, days_to_earnings
         except Exception:
             return sym, {}, {}, None
@@ -605,6 +693,61 @@ def market_overview(request):
         cached = _overview_cache["data"]
 
     return Response(cached if cached else {"assets": [], "loading": True})
+
+
+# ─── Ticker Search ────────────────────────────────────────────────────────────
+
+_TYPE_MAP = {
+    'Common Stock': 'stock',
+    'ADR': 'stock',
+    'ETP': 'etf',
+    'ETF': 'etf',
+    'Mutual Fund': 'etf',
+    'REIT': 'stock',
+    'Index': 'index',
+    'Crypto': 'crypto',
+}
+
+@api_view(['GET'])
+def ticker_search(request):
+    """Search for ticker symbols using Finnhub symbol lookup."""
+    query = request.query_params.get('q', '').strip()
+    if not query:
+        return Response({'results': []})
+
+    api_key = settings.FINNHUB_API_KEY
+    if not api_key:
+        return Response({'error': 'FINNHUB_API_KEY not configured'}, status=500)
+
+    try:
+        resp = requests.get(
+            'https://finnhub.io/api/v1/search',
+            params={'q': query, 'token': api_key},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        raw = resp.json().get('result', [])
+    except requests.RequestException:
+        return Response({'results': []})
+
+    results = []
+    for item in raw:
+        symbol = item.get('displaySymbol', '')
+        # Filter to US-traded symbols (no dots like .TO, .DE)
+        if '.' in symbol:
+            continue
+        raw_type = item.get('type', '')
+        mapped_type = _TYPE_MAP.get(raw_type, 'stock')
+        results.append({
+            'symbol': symbol,
+            'name': (item.get('description') or symbol).title(),
+            'type': mapped_type,
+            'exchange': item.get('exchange', ''),
+        })
+        if len(results) >= 8:
+            break
+
+    return Response({'results': results})
 
 
 @api_view(['GET'])

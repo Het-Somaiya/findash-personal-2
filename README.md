@@ -12,7 +12,7 @@ The platform does **not** place trades or make predictions. Its purpose is to he
 |---|---|
 | Frontend | React 19 + TypeScript, Vite, Tailwind CSS v4 |
 | Backend | Django 6, Django REST Framework |
-| Database | SQLite (dev) / PostgreSQL (prod) |
+| Database | Azure SQL Database (primary) / SQLite (fallback) |
 | Language (BE) | Python 3.13 |
 
 ---
@@ -47,7 +47,7 @@ FinDash-web/
 
 - Node.js 20+ and npm
 - Python 3.13+
-- PostgreSQL (optional — only needed if `USE_POSTGRES=True`)
+- ODBC Driver 18 for SQL Server (auto-installed on macOS via `npm run dev`)
 
 ---
 
@@ -88,7 +88,7 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Edit .env if needed (SQLite works out of the box)
+# Edit .env — fill in DB_PASSWORD (ask team lead)
 
 # Run migrations and start server
 python manage.py migrate
@@ -122,30 +122,21 @@ The frontend will be available at `http://localhost:5173`.
 | `DJANGO_SECRET_KEY` | Django secret key — change in production | — |
 | `DEBUG` | Enable debug mode | `True` |
 | `ALLOWED_HOSTS` | Comma-separated list of allowed hosts | `localhost,127.0.0.1` |
-| `USE_POSTGRES` | Use PostgreSQL instead of SQLite | `False` |
-| `DB_NAME` | PostgreSQL database name | `findash` |
-| `DB_USER` | PostgreSQL user | `postgres` |
-| `DB_PASSWORD` | PostgreSQL password | — |
-| `DB_HOST` | PostgreSQL host | `localhost` |
-| `DB_PORT` | PostgreSQL port | `5432` |
+| `DB_HOST` | Azure SQL server hostname | `findash.database.windows.net` |
+| `DB_NAME` | Database name | `findash-sql-db` |
+| `DB_USER` | SQL admin username | — |
+| `DB_PASSWORD` | SQL admin password | — |
 
 ### Database Configuration
 
-By default, the backend uses **SQLite** for local development — no setup required.
+The backend uses **Azure SQL Database** as the primary database. All team members connect to the same shared instance.
 
-To switch to **PostgreSQL** (recommended for production or team environments):
+When `DB_HOST`, `DB_USER`, and `DB_PASSWORD` are set in `.env`, Django connects to Azure SQL. If those are missing, it falls back to a local SQLite file for offline development.
 
-1. Ensure PostgreSQL is running locally
-2. Create a database named `findash`
-3. Set `USE_POSTGRES=True` in `backend/.env`
-4. Configure `DB_USER`, `DB_PASSWORD`, etc. as needed
-5. Run migrations: `python manage.py migrate`
-
-**When to use PostgreSQL:**
-- Production deployments
-- Testing with production-like data
-- Team development with shared database
-- When you need PostgreSQL-specific features (JSON fields, full-text search, etc.)
+**Setup:**
+1. Copy `.env.example` to `.env`
+2. Fill in `DB_PASSWORD` (ask the team lead)
+3. Run `npm run dev` — ODBC driver is auto-checked and migrations run automatically
 
 ---
 
