@@ -9,6 +9,7 @@ urlpatterns = [
     path('asset/', views.stock_asset, name='stock-asset'),
     path('market-overview/', views.market_overview, name='market-overview'),
     path('bars/', views.stock_bars, name='stock-bars'),
+    path('asset/history/', views.asset_history, name='asset-history'),
     path('search/', views.ticker_search, name='ticker-search'),
     path('chat/', chat, name='chat'),
 
