@@ -1,5 +1,5 @@
 import "./styles/index.css";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./lib/AuthContext";
 import { Navbar } from "./components/Navbar";
@@ -11,9 +11,11 @@ import { Footer } from "./components/Footer";
 import { Chatbot } from "./components/Chatbot";
 import { LoginPage } from "./components/LoginPage";
 import { RegisterPage } from "./components/RegisterPage";
+import type { AssetData } from "./components/SearchPanel";
 
 function LandingPage() {
   const contentRef = useRef<HTMLDivElement>(null);
+  const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
 
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -21,8 +23,12 @@ function LandingPage() {
 
   return (
     <>
-      <Navbar />
-      <HeroSection onExploreClick={scrollToContent} />
+      <Navbar selectedAsset={selectedAsset} onAssetSelect={setSelectedAsset} />
+      <HeroSection
+        onExploreClick={scrollToContent}
+        selectedAsset={selectedAsset}
+        onAssetSelect={setSelectedAsset}
+      />
       <div ref={contentRef}>
         <NewsAndMarket />
       </div>
