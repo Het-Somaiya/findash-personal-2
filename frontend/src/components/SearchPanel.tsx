@@ -539,9 +539,10 @@ export interface SearchPanelProps {
   asset: AssetData;
   onClose: () => void;
   navbarRef: RefObject<HTMLElement | null>;
+  inline?: boolean;
 }
 
-export function SearchPanel({ asset, onClose, navbarRef }: SearchPanelProps) {
+export function SearchPanel({ asset, onClose, navbarRef, inline = false }: SearchPanelProps) {
   const [range, setRange] = useState<ChartRange>("5D");
   const [chartData, setChartData] = useState<ChartPoint[]>(() => genChart(asset, "5D"));
   const panelRef = useRef<HTMLDivElement>(null);
@@ -602,16 +603,16 @@ export function SearchPanel({ asset, onClose, navbarRef }: SearchPanelProps) {
         ref={panelRef}
         className="panel-scroll"
         style={{
-          position: "absolute",
-          top: "calc(100% + 6px)",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 640,
-          zIndex: 200,
+          position: inline ? "relative" : "absolute",
+          top: inline ? undefined : "calc(100% + 6px)",
+          left: inline ? undefined : "50%",
+          transform: inline ? undefined : "translateX(-50%)",
+          width: inline ? "100%" : 640,
+          zIndex: inline ? undefined : 200,
           ...glassDeep,
           boxShadow: "0 36px 90px rgba(0,0,0,0.85), 0 0 0 1px rgba(0,180,255,0.07), inset 0 1px 0 rgba(255,255,255,0.04)",
-          animation: "panelIn 0.22s cubic-bezier(0.16,1,0.3,1) both",
-          maxHeight: "calc(100vh - 110px)",
+          animation: inline ? "none" : "panelIn 0.22s cubic-bezier(0.16,1,0.3,1) both",
+          maxHeight: inline ? undefined : "calc(100vh - 110px)",
           overflowY: "auto",
         }}
       >
