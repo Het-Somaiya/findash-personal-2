@@ -9,8 +9,6 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-import axios from "axios";
-
 const MASSIVE_API_KEY = import.meta.env.VITE_MASSIVE_API_KEY ?? "";
 const MASSIVE_BASE    = "https://api.massive.com";
 // Automatically uses live data when a real key is provided
@@ -215,32 +213,20 @@ function massiveTypeToLocal(t: string): TickerSuggestion["type"] {
 
 export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapshot[]> {
   try {
-    // 1. Use the 'api' instance to call the backend (Interceptor adds the token)
-    const res = await api.get("/api/quotes/", {
-      params: { symbols: symbols.join(",") }
-    });
-    
-    const data = res.data;
+    const res = await fetch(`${BACKEND_BASE}/api/quotes/?symbols=${symbols.join(",")}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { quotes: Record<string, { price: number; changePct: number; change: number }> } = await res.json();
 
-    // 2. Map the raw backend data into the format the UI expects
     return symbols.map(sym => {
-      const q = data.quotes?.[sym];
-      
-      // If backend data is missing for this symbol, try to use a mock fallback
+      const q = data.quotes[sym];
       if (!q || !q.price) {
         const mock = MOCK_QUOTES[sym];
         return mock ? quoteToSnapshot(mock) : { label: sym, value: "—", change: "—", up: true };
       }
-
-      // Convert the backend quote format to the Snapshot format
       return quoteToSnapshot({
-        symbol: sym, 
-        name: MOCK_QUOTES[sym]?.name ?? sym,
-        price: q.price, 
-        change: q.change, 
-        changePct: q.changePct,
-        volume: 0, 
-        lastUpdated: "",
+        symbol: sym, name: MOCK_QUOTES[sym]?.name ?? sym,
+        price: q.price, change: q.change, changePct: q.changePct,
+        volume: 0, lastUpdated: "",
       });
     });
   } catch {
@@ -254,27 +240,15 @@ export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapsh
 
 export async function searchTickers(query: string): Promise<TickerSuggestion[]> {
   try {
-    // If no API key is provided, jump straight to the 'catch' block to use mock data
-    if (MOCK) throw new Error("mock");
-
-    const res = await axios.get(`${MASSIVE_BASE}/v3/reference/tickers`, {
-      params: {
-        search: query,
-        active: "true",
-        market: "stocks",
-        limit: 8
-      },
-      headers: { "Authorization": `Bearer ${MASSIVE_API_KEY}` }
-    });
-
-    return (res.data.results ?? []).map((r: any) => ({
-      symbol:   r.ticker,
-      name:     r.name,
-      type:     massiveTypeToLocal(r.type),
-      exchange: r.primary_exchange,
-    }));
+    const res = await fetch(
+      `${BACKEND_BASE}/api/search/?q=${encodeURIComponent(query)}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { results: TickerSuggestion[] } = await res.json();
+    return data.results ?? [];
   } catch {
-    // FALLBACK: Use local mock data if the API fails or if MOCK = true
+    // Fallback to local filter if backend is down
     const q = query.toLowerCase();
     return MOCK_SUGGESTIONS
       .filter(s => s.symbol.toLowerCase().startsWith(q) || s.name.toLowerCase().includes(q))
@@ -364,6 +338,23 @@ export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
     return data.bars && data.bars.length > 0 ? data.bars : FLAT_LINE;
   } catch (error) {
     // 3. Fallback: Return a zeroed-out line so the UI remains stable
+    return FLAT_LINE;
+  }
+}
+
+// ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
+
+export interface BarPoint { t: number; c: number; }
+
+const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
+
+export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
+  try {
+    const res = await fetch(`${BACKEND_BASE}/api/bars/?symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data: { bars: BarPoint[] } = await res.json();
+    return data.bars.length > 0 ? data.bars : FLAT_LINE;
+  } catch {
     return FLAT_LINE;
   }
 }
