@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
-import { X } from "lucide-react"; // Added import
 
 const serif = "'DM Serif Display', serif";
 const sans = "'DM Sans', sans-serif";
@@ -49,31 +48,8 @@ export function LoginPage() {
           borderRadius: 16,
           padding: "48px 36px",
           backdropFilter: "blur(20px)",
-          position: "relative", // Added to allow absolute positioning of the X
         }}
       >
-        {/* Close Button Implementation */}
-        <Link
-          to="/"
-          style={{
-            position: "absolute",
-            top: 20,
-            right: 20,
-            color: "rgba(180,210,255,0.45)",
-            textDecoration: "none",
-            transition: "color 0.2s",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#e0f0ff")}
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.color = "rgba(180,210,255,0.45)")
-          }
-        >
-          <X size={20} />
-        </Link>
-
         <Link
           to="/"
           style={{

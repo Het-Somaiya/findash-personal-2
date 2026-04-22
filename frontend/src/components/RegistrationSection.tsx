@@ -1,6 +1,5 @@
-import { useNavigate, Link } from "react-router-dom"; // Added Link import
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
-import { X } from "lucide-react"; // Added X import
 
 const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
@@ -20,31 +19,7 @@ export function RegistrationSection() {
       WebkitBackdropFilter: "blur(10px)",
       padding: "72px 32px",
       textAlign: "center",
-      position: "relative", // Added to allow absolute positioning of the X
     }}>
-      {/* Close Button Implementation */}
-      <Link
-        to="/"
-        style={{
-          position: "absolute",
-          top: 24,
-          right: 24,
-          color: "rgba(180,210,255,0.45)",
-          textDecoration: "none",
-          transition: "color 0.2s",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#e0f0ff")}
-        onMouseLeave={(e) =>
-          (e.currentTarget.style.color = "rgba(180,210,255,0.45)")
-        }
-      >
-        <X size={20} />
-      </Link>
-
       <h2 style={{
         fontFamily: serif, fontSize: 40,
         color: "#e0f0ff", marginBottom: 16, lineHeight: 1.15,

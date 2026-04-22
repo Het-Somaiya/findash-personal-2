@@ -108,11 +108,6 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
     { symbol: "VIX",  name: "CBOE Volatility Index", type: "index", exchange: "CBOE"   },
   ];
 
-  // LOGIC FOR PERSONALIZED GREETING
-  // This takes the part before the first space, or the email if name is missing.
-  const firstName = user?.name ? user.name.trim().split(" ")[0] : null;
-  const greeting = firstName ? `Hi, ${firstName}!` : user?.email;
-
   return (
     <>
       <div style={{
@@ -234,7 +229,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
             </div>
           )}
 
-          {/* Asset panel — only for logged-out users */}
+          {/* Asset panel — only for logged-out users (logged-in uses HeroSection split) */}
           {selectedAsset && !user && (
             <SearchPanel
               asset={selectedAsset}
@@ -264,7 +259,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
           {user ? (
             <>
               <span style={{ color: "rgba(200,225,255,0.75)", fontFamily: sans, fontSize: 13, letterSpacing: "0.02em" }}>
-                {greeting}
+                {user.name || user.email}
               </span>
               <button
                 onClick={async () => { await logout(); navigate("/"); }}
