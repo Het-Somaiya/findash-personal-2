@@ -22,6 +22,7 @@ interface AuthContextValue {
   accessToken: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  // The 'name' here is passed to apiRegister and stored in the user state
   register: (email: string, name: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -50,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, REFRESH_INTERVAL_MS);
   }, []);
 
-  // Silent refresh on mount — restores session from httpOnly cookie
+  // Silent refresh on mount — restores session and user data (including name)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -58,12 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { access } = await apiRefresh();
         if (cancelled) return;
         setAccessToken(access);
+        
+        // Ensure apiGetMe returns the full user object with the name field
         const me = await apiGetMe(access);
         if (cancelled) return;
         setUser(me);
+        
         startRefreshTimer();
       } catch {
-        // No valid session — that's fine
+        // No valid session
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -78,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const res = await apiLogin(email, password);
       setAccessToken(res.access);
+      // Backend must include 'name' in the 'user' object of the login response
       setUser(res.user);
       startRefreshTimer();
     },
@@ -88,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, name: string, password: string) => {
       const res = await apiRegister(email, name, password);
       setAccessToken(res.access);
+      // Ensure the registration response returns the user object with the name
       setUser(res.user);
       startRefreshTimer();
     },
