@@ -42,9 +42,7 @@ export function Navbar() {
   const blurTimer = useRef<ReturnType<typeof setTimeout>>();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  
   const [query,         setQuery]         = useState("");
   const [suggIdx,       setSuggIdx]       = useState(0);
   const [focused,       setFocused]       = useState(false);
@@ -271,7 +269,7 @@ export function Navbar() {
               color: "rgba(200,225,255,0.75)", fontFamily: sans,
               fontSize: 13, letterSpacing: "0.02em",
             }}>
-              {user.name || user.email}
+              {user.name ? `Hi, ${user.name.trim().split(" ")[0]}!` : user.email}
             </span>
             <button
               onClick={async () => { await logout(); navigate("/"); }}
