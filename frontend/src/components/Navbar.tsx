@@ -259,7 +259,9 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
           {user ? (
             <>
               <span style={{ color: "rgba(200,225,255,0.75)", fontFamily: sans, fontSize: 13, letterSpacing: "0.02em" }}>
-                {user.name || user.email}
+                {user.name 
+                  ? `Hi, ${user.name.trim().split(" ")[0]}!` 
+                  : user.email}
               </span>
               <button
                 onClick={async () => { await logout(); navigate("/"); }}
