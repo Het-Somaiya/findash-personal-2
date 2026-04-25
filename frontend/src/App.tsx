@@ -33,7 +33,10 @@ function LandingPage() {
         <NewsAndMarket />
       </div>
       <FeatureCards />
-      <RegistrationSection />
+      {/* CORRECTION: Passed onExploreClick prop to RegistrationSection 
+          to enable the bottom button to trigger the scroll behavior.
+      */}
+      <RegistrationSection onExploreClick={scrollToContent} />
       <Footer />
       <Chatbot />
     </>
