@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
@@ -42,7 +41,7 @@ export function Navbar() {
   const blurTimer = useRef<ReturnType<typeof setTimeout>>();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  
+
   const [query,         setQuery]         = useState("");
   const [suggIdx,       setSuggIdx]       = useState(0);
   const [focused,       setFocused]       = useState(false);
@@ -243,18 +242,9 @@ export function Navbar() {
           <span
             key={l}
             style={{
-              width: "100%", height: 37,
-              paddingLeft: 36, paddingRight: 14,
-              background: "rgba(255,255,255,0.05)",
-              border: focused || selectedAsset
-                ? "1px solid rgba(0,180,255,0.50)"
-                : "1px solid rgba(0,180,255,0.18)",
-              boxShadow: focused || selectedAsset
-                ? "0 0 0 3px rgba(0,180,255,0.08)"
-                : "none",
-              borderRadius: 10, color: "#e0f0ff",
-              fontSize: 13, fontFamily: sans,
-              outline: "none", transition: "border-color 0.2s, box-shadow 0.2s",
+              color: "rgba(200,225,255,0.55)", fontFamily: sans,
+              fontSize: 13, cursor: "pointer", letterSpacing: "0.02em",
+              transition: "color 0.2s",
             }}
             onMouseEnter={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.9)")}
             onMouseLeave={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.55)")}
@@ -269,7 +259,10 @@ export function Navbar() {
               color: "rgba(200,225,255,0.75)", fontFamily: sans,
               fontSize: 13, letterSpacing: "0.02em",
             }}>
-              {user.name ? `Hi, ${user.name.trim().split(" ")[0]}!` : user.email}
+              {user.name 
+                ? `Hi, ${user.name.trim().split(" ")[0].charAt(0).toUpperCase() + user.name.trim().split(" ")[0].slice(1).toLowerCase()}!` 
+                : user.email
+              }
             </span>
             <button
               onClick={async () => { await logout(); navigate("/"); }}
