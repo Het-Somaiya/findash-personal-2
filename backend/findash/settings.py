@@ -118,15 +118,23 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
+CORS_ALLOW_CREDENTIALS = True
 
 # 3. Secure Proxy Setting: Tells Django we are behind a tunnel
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # 4. Cookie Settings: Prevents browser from blocking the login session
-SESSION_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = False
+# Auth cookie settings
+AUTH_COOKIE_NAME = 'findash_refresh'
+AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
+AUTH_COOKIE_SECURE = False
+AUTH_COOKIE_HTTPONLY = True
+AUTH_COOKIE_SAMESITE = 'Lax'
+AUTH_COOKIE_PATH = '/api/auth/'
 
 # Finnhub & OpenAI
 FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')

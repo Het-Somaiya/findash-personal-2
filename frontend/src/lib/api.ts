@@ -1,3 +1,4 @@
+import axios from "axios";
 /**
  * FinDash — Unified API layer
  *
@@ -322,41 +323,15 @@ export async function getNews(): Promise<NewsResponse> {
 // ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
 
 export interface BarPoint { t: number; c: number; }
-
 const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
 
 export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
   try {
-    // 1. Use the 'api' instance to call the backend (Interceptor adds the token)
-    const res = await api.get("/api/bars/", {
-      params: { symbol }
-    });
-    
+    const res = await api.get("/api/bars/", { params: { symbol } });
     const data = res.data;
-
-    // 2. Return the bars if they exist, otherwise fallback to a flat line
     return data.bars && data.bars.length > 0 ? data.bars : FLAT_LINE;
   } catch (error) {
-    // 3. Fallback: Return a zeroed-out line so the UI remains stable
     return FLAT_LINE;
   }
 }
-
-// ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
-
-export interface BarPoint { t: number; c: number; }
-
-const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
-
-export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
-  try {
-    const res = await fetch(`${BACKEND_BASE}/api/bars/?symbol=${encodeURIComponent(symbol)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data: { bars: BarPoint[] } = await res.json();
-    return data.bars.length > 0 ? data.bars : FLAT_LINE;
-  } catch {
-    return FLAT_LINE;
-  }
-}
-
 export { MOCK_QUOTES, MOCK_SUGGESTIONS };
