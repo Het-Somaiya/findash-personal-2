@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
@@ -47,26 +48,23 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  const [query,   setQuery]   = useState("");
-  const [suggIdx, setSuggIdx] = useState(0);
-  const [focused, setFocused] = useState(false);
+  const [query,    setQuery]    = useState("");
+  const [suggIdx,  setSuggIdx]  = useState(0);
+  const [focused,  setFocused]  = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [results, setResults] = useState<TickerSuggestion[]>([]);
+  const [results,  setResults]  = useState<TickerSuggestion[]>([]);
 
-  // Cycle placeholder text
   useEffect(() => {
     const id = setInterval(() => setSuggIdx(i => (i + 1) % SEARCH_SUGGESTIONS.length), 2800);
     return () => clearInterval(id);
   }, []);
 
-  // Scroll-triggered navbar
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > window.innerHeight * 0.85);
     window.addEventListener("scroll", h, { passive: true });
     return () => window.removeEventListener("scroll", h);
   }, []);
 
-  // Live ticker search
   useEffect(() => {
     if (!query.trim()) { setResults([]); return; }
     let cancelled = false;
@@ -74,7 +72,6 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
     return () => { cancelled = true; };
   }, [query]);
 
-  // Sync query input with selected asset
   useEffect(() => {
     if (!selectedAsset) setQuery("");
     else setQuery(selectedAsset.ticker);
@@ -82,7 +79,6 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
 
   const handleSelect = (symbol: string) => {
     const key = symbol.toUpperCase();
-    // Show mock immediately
     const placeholder = ASSET_DB[key] ?? ({
       ticker: key, name: key, type: "STOCK", sector: "—",
       price: 0, change: 0, changePct: 0, up: true,
@@ -100,7 +96,6 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
     setQuery(symbol);
     setFocused(false);
     clearTimeout(blurTimer.current);
-    // Fetch real data and replace
     fetchAsset(key).then(data => { if (data) onAssetSelect(data); });
   };
 
@@ -116,7 +111,6 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
 
   return (
     <>
-      {/* Vignette overlay */}
       <div style={{
         position: "fixed", top: 0, left: 0, right: 0, height: 320,
         zIndex: 99, pointerEvents: "none",
@@ -157,10 +151,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
 
           <input
             value={query}
-            onChange={e => {
-              setQuery(e.target.value);
-              onAssetSelect(null);
-            }}
+            onChange={e => { setQuery(e.target.value); onAssetSelect(null); }}
             onFocus={() => setFocused(true)}
             onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 160); }}
             placeholder={`Search — try "${SEARCH_SUGGESTIONS[suggIdx]}"`}
@@ -239,7 +230,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
             </div>
           )}
 
-          {/* Asset panel — only shown when NOT logged in (logged-in uses HeroSection split) */}
+          {/* Asset panel — only for logged-out users (logged-in uses HeroSection split) */}
           {selectedAsset && !user && (
             <SearchPanel
               asset={selectedAsset}
@@ -268,10 +259,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
 
           {user ? (
             <>
-              <span style={{
-                color: "rgba(200,225,255,0.75)", fontFamily: sans,
-                fontSize: 13, letterSpacing: "0.02em",
-              }}>
+              <span style={{ color: "rgba(200,225,255,0.75)", fontFamily: sans, fontSize: 13, letterSpacing: "0.02em" }}>
                 {user.name || user.email}
               </span>
               <button
@@ -293,10 +281,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
             <>
               <span
                 onClick={() => navigate("/login")}
-                style={{
-                  color: "rgba(200,225,255,0.55)", fontFamily: sans,
-                  fontSize: 13, cursor: "pointer", transition: "color 0.2s",
-                }}
+                style={{ color: "rgba(200,225,255,0.55)", fontFamily: sans, fontSize: 13, cursor: "pointer", transition: "color 0.2s" }}
                 onMouseEnter={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.9)")}
                 onMouseLeave={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.55)")}
               >

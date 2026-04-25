@@ -32,6 +32,8 @@ import {
   ReferenceLine,
 } from "recharts";
 
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
 // ─── Asset data shape ─────────────────────────────────────────────────────────
 
 export interface AssetData {
@@ -555,7 +557,18 @@ export function SearchPanel({ asset, onClose, navbarRef, inline = false }: Searc
   const volAccent = asset.volRatio > 1.3 ? "#ff9040" : asset.volRatio > 1.1 ? "#ffb800" : undefined;
 
   useEffect(() => {
+    let cancelled = false;
+    // Show a synthesized line immediately so the chart never looks empty,
+    // then replace with real close-price data when the backend responds.
     setChartData(genChart(asset, range));
+    fetch(`${BACKEND_BASE}/api/asset/history/?symbol=${encodeURIComponent(asset.ticker)}&range=${range}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (cancelled || !data?.points?.length) return;
+        setChartData(data.points);
+      })
+      .catch(() => { /* keep synthesized fallback */ });
+    return () => { cancelled = true; };
   }, [asset, range]);
 
   useEffect(() => {
