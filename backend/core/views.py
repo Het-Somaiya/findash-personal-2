@@ -12,6 +12,11 @@ from rest_framework.response import Response
 
 from core.ticker_resolver import extract_tickers_batch
 
+from .models import User  
+from django.contrib.auth.hashers import make_password
+from rest_framework import permissions
+from rest_framework.decorators import permission_classes
+
 CATEGORIES = ['general', 'forex', 'merger']
 MAX_PER_SOURCE = 3
 TOTAL_ARTICLES = 10
@@ -917,3 +922,35 @@ def market_news(request):
     # Cache not ready yet (server just started), fetch now
     _fetch_news()
     return Response(_cache['data'] or {'articles': [], 'quotes': {}})
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def register_user(request):
+    """
+    Handles registration for the Custom User model in models.py
+    """
+    data = request.data
+    try:
+        email = data.get('email')
+        password = data.get('password')
+        # Combine first and last name for your single 'name' field
+        full_name = data.get('name', '') 
+
+        # 1. Validation
+        if not email or not password:
+            return Response({'error': 'Email and password are required'}, status=400)
+
+        if User.objects.filter(email=email).exists():
+            return Response({'error': 'A user with this email already exists'}, status=400)
+
+        # 2. Create the user using your model's fields
+        user = User.objects.create(
+            email=email,
+            name=full_name,
+            password_hash=make_password(password) # Matches your 'password_hash' field
+        )
+
+        return Response({'message': 'User registered successfully!'}, status=201)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)

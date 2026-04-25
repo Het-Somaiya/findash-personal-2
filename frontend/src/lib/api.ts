@@ -16,6 +16,38 @@ const MOCK = !MASSIVE_API_KEY || MASSIVE_API_KEY === "your-massive-api-key-here"
 
 const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
 
+// Create an Axios instance for the Django backend
+const api = axios.create({
+  baseURL: BACKEND_BASE,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Request Interceptor: Automatically attach JWT token to every request
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("findash_token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response Interceptor: Handle session expiration
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("findash_token");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Quote {
@@ -198,6 +230,7 @@ export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapsh
       });
     });
   } catch {
+    // 3. Complete Fallback: If the server is down, use all mock data
     return symbols.map(sym => {
       const q = MOCK_QUOTES[sym];
       return q ? quoteToSnapshot(q) : { label: sym, value: "—", change: "—", up: true };
@@ -244,11 +277,15 @@ const FALLBACK_NEWS: NewsArticle[] = [
 
 export async function getNews(): Promise<NewsResponse> {
   try {
-    const res = await fetch(`${BACKEND_BASE}/api/news/`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    // 1. Use the 'api' instance to call the backend with an 8-second timeout
+    const res = await api.get("/api/news/", { 
+      timeout: 8000 
+    });
+    
+    const data = res.data;
+    
 
-    // Natasha's backend returns { articles, quotes, topStocks, topSignals }
+    // 2. Handle the response data (Backend returns { articles, quotes, topStocks, topSignals })
     const rawArticles: Array<{
       id: number | string; headline: string; source: string;
       time: string; tickers: string[]; url: string; image?: string; summary?: string;
@@ -270,8 +307,38 @@ export async function getNews(): Promise<NewsResponse> {
       topStocks: data.topStocks || [],
       topSignals: data.topSignals || [],
     };
-  } catch {
-    return { articles: FALLBACK_NEWS, fromBackend: false, quotes: {}, topStocks: [], topSignals: [] };
+  } catch (error) {
+    // 3. Fallback to hardcoded news if the API is unreachable
+    return { 
+      articles: FALLBACK_NEWS, 
+      fromBackend: false, 
+      quotes: {}, 
+      topStocks: [], 
+      topSignals: [] 
+    };
+  }
+}
+
+// ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
+
+export interface BarPoint { t: number; c: number; }
+
+const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
+
+export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
+  try {
+    // 1. Use the 'api' instance to call the backend (Interceptor adds the token)
+    const res = await api.get("/api/bars/", {
+      params: { symbol }
+    });
+    
+    const data = res.data;
+
+    // 2. Return the bars if they exist, otherwise fallback to a flat line
+    return data.bars && data.bars.length > 0 ? data.bars : FLAT_LINE;
+  } catch (error) {
+    // 3. Fallback: Return a zeroed-out line so the UI remains stable
+    return FLAT_LINE;
   }
 }
 
