@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { LandingMarketGlobe } from "./MarketGlobe";
 import { SearchPanel, type AssetData } from "./SearchPanel";
 import { useAuth } from "../lib/AuthContext";
@@ -174,6 +175,8 @@ function LoggedInHero({ selectedAsset, onAssetSelect }: {
 }
 
 function LoggedOutHero({ onExploreClick }: { onExploreClick?: () => void }) {
+  const navigate = useNavigate();
+
   return (
     <section style={{
       position: "relative", height: "100vh", overflow: "hidden",
@@ -227,11 +230,12 @@ function LoggedOutHero({ onExploreClick }: { onExploreClick?: () => void }) {
               Explore free ↓
             </button>
             <button
+              onClick={() => navigate("/register")}
               style={{ padding: "12px 28px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(200,225,255,0.70)", fontFamily: sans, fontSize: 14, cursor: "pointer", transition: "background 0.2s" }}
               onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.10)")}
               onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
             >
-              See what's unlocked
+              See what's locked
             </button>
           </div>
         </div>
