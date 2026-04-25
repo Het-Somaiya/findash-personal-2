@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 import requests
+import yfinance as yf
 from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -377,25 +378,34 @@ def stock_asset(request):
                             params={'symbol': symbol, 'metric': 'all', 'token': api_key}, timeout=5).json()
 
     try:
-        if cached:
-            # Reuse quote + metrics from hero, only fetch profile
-            quote = cached["quote"]
-            metrics = cached["metrics"]
-            try:
-                profile = fetch_profile()
-            except requests.RequestException:
-                profile = {}
-        else:
-            with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            yf_future = pool.submit(_fetch_yf_data, symbol)
+            # Metrics are stable, so reuse from overview cache when available.
+            # Quote must always be refreshed — the overview's batch fetch often
+            # gets rate-limited by Finnhub and stores {c: 0} in the cache.
+            if cached and cached["metrics"]:
+                metrics = cached["metrics"]
+                qf = pool.submit(fetch_quote)
+                pf = pool.submit(fetch_profile)
+                try:
+                    quote = qf.result()
+                except requests.RequestException:
+                    quote = cached["quote"]
+                try:
+                    profile = pf.result()
+                except requests.RequestException:
+                    profile = {}
+            else:
                 qf = pool.submit(fetch_quote)
                 pf = pool.submit(fetch_profile)
                 mf = pool.submit(fetch_metrics)
                 quote   = qf.result()
                 profile = pf.result()
                 metrics = mf.result().get('metric', {})
-            # Cache for future lookups
+            # Refresh cache with the fresh quote (and metrics if newly fetched)
             with _ticker_data_lock:
                 _ticker_data[symbol] = {"quote": quote, "metrics": metrics, "ts": time.time()}
+            yf_data = yf_future.result()
     except requests.RequestException as e:
         return Response({'error': str(e)}, status=502)
 
@@ -453,12 +463,12 @@ def stock_asset(request):
         'week52High':           w52_high,
         'week52Low':            w52_low,
         'week52Pos':            w52_pos,
-        'nextEarnings':         None,
-        'rsi':                  50,
+        'nextEarnings':         yf_data.get('nextEarnings'),
+        'rsi':                  yf_data.get('rsi') if yf_data.get('rsi') is not None else 50,
         'beta':                 round(beta, 2),
-        'shortFloatPct':        None,
-        'daysToCover':          None,
-        'institutionalOwnership': 0,
+        'shortFloatPct':        yf_data.get('shortFloatPct'),
+        'daysToCover':          yf_data.get('daysToCover'),
+        'institutionalOwnership': yf_data.get('institutionalOwnership') if yf_data.get('institutionalOwnership') is not None else 0,
         'insiderActivity':      'neutral',
         'insiderNet':           0,
         'dividendYield':        round(div_yld, 2) if div_yld else None,
@@ -509,6 +519,66 @@ def stock_bars(request):
         return Response({'bars': []})
 
     return Response({'bars': bars})
+
+
+_HISTORY_RANGES = {
+    '1D': ('1d',  '5m'),
+    '5D': ('5d',  '30m'),
+    '1M': ('1mo', '1d'),
+    '3M': ('3mo', '1d'),
+}
+
+
+@api_view(['GET'])
+def asset_history(request):
+    """Return close-price points for a symbol and range, for the SearchPanel chart."""
+    symbol = request.query_params.get('symbol', '').upper()
+    range_ = request.query_params.get('range', '5D').upper()
+    if not symbol:
+        return Response({'error': 'symbol parameter required'}, status=400)
+
+    period, interval = _HISTORY_RANGES.get(range_, _HISTORY_RANGES['5D'])
+    yf_symbol = _YF_SYMBOL_MAP.get(symbol, symbol)
+
+    try:
+        resp = requests.get(
+            f'https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}',
+            params={'interval': interval, 'range': period},
+            headers={'User-Agent': 'Mozilla/5.0'},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        return Response({'points': []})
+
+    try:
+        result     = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        closes     = result['indicators']['quote'][0]['close']
+    except (KeyError, IndexError, TypeError):
+        return Response({'points': []})
+
+    from datetime import datetime
+    raw = [(ts, c) for ts, c in zip(timestamps, closes) if c is not None]
+    n = len(raw)
+    # Aim for ~5 labels across the series regardless of length
+    step = max(1, n // 5)
+    points = []
+    for idx, (ts, c) in enumerate(raw):
+        dt = datetime.fromtimestamp(ts)
+        if idx % step == 0:
+            if range_ == '1D':
+                label = dt.strftime('%H:%M')
+            elif range_ == '5D':
+                label = dt.strftime('%a')
+            else:
+                label = dt.strftime('%b %d')
+        else:
+            label = ''
+        points.append({'idx': idx, 'label': label, 'price': round(c, 2)})
+
+    return Response({'points': points})
 
 
 # ─── Market Overview (bubble graph) ──────────────────────────────────────────
@@ -597,6 +667,91 @@ OVERVIEW_TTL      = 900     # 15 min
 # Per-ticker raw data cache — populated by overview, consumed by stock_asset
 _ticker_data_lock = threading.Lock()
 _ticker_data = {}  # symbol -> {"quote": {}, "metrics": {}, "ts": float}
+
+# yfinance data cache — the `.info` + RSI lookups take 1-2s each, so cache aggressively
+_yf_cache_lock = threading.Lock()
+_yf_cache = {}  # symbol -> {"data": {}, "ts": float}
+YF_TTL = 900  # 15 min
+
+
+def _compute_rsi(closes, period=14):
+    """Simple RSI from a list of daily closes. Returns int 0-100 or None."""
+    if len(closes) < period + 1:
+        return None
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i - 1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    if avg_loss == 0:
+        return 100
+    rs = avg_gain / avg_loss
+    return int(100 - 100 / (1 + rs))
+
+
+def _fetch_rsi_from_yahoo(symbol):
+    """Compute 14-day RSI from the same Yahoo chart endpoint stock_bars uses — no crumb needed."""
+    try:
+        resp = requests.get(
+            f'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}',
+            params={'interval': '1d', 'range': '1mo'},
+            headers={'User-Agent': 'Mozilla/5.0'},
+            timeout=6,
+        )
+        resp.raise_for_status()
+        result = resp.json()['chart']['result'][0]
+        closes = [c for c in result['indicators']['quote'][0]['close'] if c is not None]
+        return _compute_rsi(closes)
+    except (requests.RequestException, KeyError, IndexError, TypeError):
+        return None
+
+
+def _fetch_yf_data(symbol):
+    """Fetch RSI + ownership/short/earnings fields. Cached for 15 min.
+
+    RSI comes from the v8/chart endpoint (reliable, no auth).
+    Ownership/short/earnings come from yfinance (best-effort — Yahoo rate-limits
+    the quoteSummary endpoint aggressively, so these may be None).
+    """
+    with _yf_cache_lock:
+        entry = _yf_cache.get(symbol)
+        if entry and time.time() - entry["ts"] < YF_TTL:
+            return entry["data"]
+
+    data = {
+        "rsi": _fetch_rsi_from_yahoo(symbol),
+        "shortFloatPct": None,
+        "daysToCover": None,
+        "institutionalOwnership": None,
+        "nextEarnings": None,
+    }
+    try:
+        info = yf.Ticker(symbol).info or {}
+        spf = info.get('shortPercentOfFloat')
+        if spf is not None:
+            data["shortFloatPct"] = round(spf * 100, 2)
+        data["daysToCover"] = info.get('shortRatio')
+        inst = info.get('heldPercentInstitutions')
+        if inst is not None:
+            data["institutionalOwnership"] = round(inst * 100)
+        earnings = info.get('earningsDate') or info.get('earningsTimestamp')
+        if earnings:
+            first = earnings[0] if isinstance(earnings, (list, tuple)) else earnings
+            try:
+                if isinstance(first, (int, float)):
+                    data["nextEarnings"] = date.fromtimestamp(first).isoformat()
+                else:
+                    data["nextEarnings"] = str(first)[:10]
+            except (ValueError, OSError, TypeError):
+                pass
+    except Exception:
+        pass  # Yahoo rate-limited — leave fields as None, UI handles null gracefully
+
+    with _yf_cache_lock:
+        _yf_cache[symbol] = {"data": data, "ts": time.time()}
+    return data
 
 # Limit concurrent Finnhub connections (not per-minute — just concurrency)
 _finnhub_sem = threading.Semaphore(8)

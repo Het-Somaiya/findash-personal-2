@@ -32,6 +32,8 @@ import {
   ReferenceLine,
 } from "recharts";
 
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
 // ─── Asset data shape ─────────────────────────────────────────────────────────
 
 export interface AssetData {
@@ -539,9 +541,10 @@ export interface SearchPanelProps {
   asset: AssetData;
   onClose: () => void;
   navbarRef: RefObject<HTMLElement | null>;
+  inline?: boolean;
 }
 
-export function SearchPanel({ asset, onClose, navbarRef }: SearchPanelProps) {
+export function SearchPanel({ asset, onClose, navbarRef, inline = false }: SearchPanelProps) {
   const [range, setRange] = useState<ChartRange>("5D");
   const [chartData, setChartData] = useState<ChartPoint[]>(() => genChart(asset, "5D"));
   const panelRef = useRef<HTMLDivElement>(null);
@@ -554,7 +557,18 @@ export function SearchPanel({ asset, onClose, navbarRef }: SearchPanelProps) {
   const volAccent = asset.volRatio > 1.3 ? "#ff9040" : asset.volRatio > 1.1 ? "#ffb800" : undefined;
 
   useEffect(() => {
+    let cancelled = false;
+    // Show a synthesized line immediately so the chart never looks empty,
+    // then replace with real close-price data when the backend responds.
     setChartData(genChart(asset, range));
+    fetch(`${BACKEND_BASE}/api/asset/history/?symbol=${encodeURIComponent(asset.ticker)}&range=${range}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (cancelled || !data?.points?.length) return;
+        setChartData(data.points);
+      })
+      .catch(() => { /* keep synthesized fallback */ });
+    return () => { cancelled = true; };
   }, [asset, range]);
 
   useEffect(() => {
@@ -602,16 +616,16 @@ export function SearchPanel({ asset, onClose, navbarRef }: SearchPanelProps) {
         ref={panelRef}
         className="panel-scroll"
         style={{
-          position: "absolute",
-          top: "calc(100% + 6px)",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 640,
-          zIndex: 200,
+          position: inline ? "relative" : "absolute",
+          top: inline ? undefined : "calc(100% + 6px)",
+          left: inline ? undefined : "50%",
+          transform: inline ? undefined : "translateX(-50%)",
+          width: inline ? "100%" : 640,
+          zIndex: inline ? undefined : 200,
           ...glassDeep,
           boxShadow: "0 36px 90px rgba(0,0,0,0.85), 0 0 0 1px rgba(0,180,255,0.07), inset 0 1px 0 rgba(255,255,255,0.04)",
-          animation: "panelIn 0.22s cubic-bezier(0.16,1,0.3,1) both",
-          maxHeight: "calc(100vh - 110px)",
+          animation: inline ? "none" : "panelIn 0.22s cubic-bezier(0.16,1,0.3,1) both",
+          maxHeight: inline ? undefined : "calc(100vh - 110px)",
           overflowY: "auto",
         }}
       >
