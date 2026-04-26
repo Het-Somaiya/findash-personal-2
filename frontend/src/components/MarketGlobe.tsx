@@ -57,6 +57,32 @@ interface MarketGlobeProps {
   onTickerClick?: (asset: import("./SearchPanel").AssetData | null) => void;
 }
 
+// ─── Ticker name lookup ─────────────────────────────────────────────────────
+
+const TICKER_NAMES: Record<string, string> = {
+  AAPL: "Apple", MSFT: "Microsoft", NVDA: "NVIDIA", GOOGL: "Alphabet",
+  META: "Meta Platforms", AMZN: "Amazon", TSLA: "Tesla",
+  AVGO: "Broadcom", ORCL: "Oracle", AMD: "AMD", INTC: "Intel",
+  QCOM: "Qualcomm", TXN: "Texas Instruments", AMAT: "Applied Materials",
+  MU: "Micron Technology", ADBE: "Adobe", CRM: "Salesforce", NOW: "ServiceNow",
+  "BRK-B": "Berkshire Hathaway", HD: "Home Depot", SBUX: "Starbucks",
+  NKE: "Nike", MCD: "McDonald's", BKNG: "Booking Holdings",
+  JNJ: "Johnson & Johnson", UNH: "UnitedHealth", LLY: "Eli Lilly",
+  ABBV: "AbbVie", PFE: "Pfizer", MRK: "Merck", TMO: "Thermo Fisher",
+  JPM: "JPMorgan Chase", GS: "Goldman Sachs", V: "Visa", MA: "Mastercard",
+  BAC: "Bank of America", WFC: "Wells Fargo", MS: "Morgan Stanley",
+  NFLX: "Netflix", DIS: "Walt Disney", T: "AT&T", VZ: "Verizon",
+  XOM: "ExxonMobil", CVX: "Chevron", COP: "ConocoPhillips", SLB: "SLB",
+  CAT: "Caterpillar", RTX: "RTX Corp", BA: "Boeing", GE: "GE Aerospace", HON: "Honeywell",
+  WMT: "Walmart", KO: "Coca-Cola", PG: "Procter & Gamble", COST: "Costco", PM: "Philip Morris",
+  NEE: "NextEra Energy", DUK: "Duke Energy",
+  AMT: "American Tower", PLD: "Prologis",
+  SPY: "S&P 500 ETF", QQQ: "Nasdaq 100 ETF", GLD: "Gold ETF", IWM: "Russell 2000 ETF",
+  SPX: "S&P 500 Index", NDX: "Nasdaq 100 Index", VIX: "Volatility Index",
+  DXY: "US Dollar Index", "10Y": "10-Year Treasury",
+  BTC: "Bitcoin", ETH: "Ethereum",
+};
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SECTORS = [
@@ -67,11 +93,12 @@ const SECTORS = [
 
 const MIN_CYL_R    = 2.0;
 const Y_DAYS_MAX   = 120;        // ± display range in days
-const Y_SCALE      = 0.032;      // days → scene units  (120 days → 3.84 units)
+const Y_SCALE      = 0.032;      // days → scene units  (120 days → 3.84 units) — drives dome ticks
+const BUBBLE_Y_SCALE = 0.044;    // bubble-only vertical spread; increase to push bubbles further apart
 const THETA_SPREAD = 0.10;       // initial angular jitter within sector
 
 const MIN_BUBBLE_R = 0.10;
-const MAX_BUBBLE_R = 0.42;
+const MAX_BUBBLE_R = 0.30;
 const BUBBLE_GAP   = 0.08;       // minimum clearance between bubble surfaces
 
 const DRIFT_AMP    = 0.035;
@@ -383,29 +410,23 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
     const hoverGlowLight = new THREE.PointLight(0xffffff, 0, 30);
     scene.add(hoverGlowLight);
 
-    // ── Glass panel — transparent plane with clearcoat for specular glare ──
-    // Sits at z=6.5, between the camera (z=9) and the bubbles.
-    // MeshPhysicalMaterial with roughness=0 + clearcoat=1 produces a hard
-    // specular highlight when a point light hits it — real glare, not CSS tricks.
+    // ── Glass panel — dark clear tint + sharp clearcoat specular glare ──
+    // No transmission (= no distortion/haziness). Glass feel comes from the
+    // dark tint + the mirror-sharp specular spot produced by clearcoat:1/roughness:0.
     const glassMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(0x9bbeff),
+      color: new THREE.Color(0x060810),   // dark blue-black tint
       transparent: true,
-      opacity: 0.045,
-      roughness: 0.0,
+      opacity: 0.10,                      // subtle dark veil — clear but present
+      roughness: 0.0,                     // perfectly smooth → sharp specular highlight
       metalness: 0.0,
       clearcoat: 1.0,
       clearcoatRoughness: 0.0,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       depthWrite: false,
     });
     const glassMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 4.0), glassMat);
     glassMesh.position.set(0, 0, 6.5);
     scene.add(glassMesh);
-
-    // Point light from upper-left, in front of the glass — creates the glare spot
-    const glareLight = new THREE.PointLight(0xfff4ee, 5.0, 18);
-    glareLight.position.set(-3.5, 5.5, 13);
-    scene.add(glareLight);
 
     // ── Bubble group — only this rotates; wall/lights stay fixed ──
     const bubbleGroup = new THREE.Group();
@@ -460,12 +481,12 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
 
       if (asset.daysToEarnings !== null) {
         const clamped = Math.max(-Y_DAYS_MAX, Math.min(Y_DAYS_MAX, asset.daysToEarnings));
-        yPositions.push(clamped * Y_SCALE);
+        yPositions.push(clamped * BUBBLE_Y_SCALE);
       } else {
         // Unknown earnings → N/A zone: spread between −NA_DAYS_MIN and −NA_DAYS_MAX
         // so they appear in the visually distinct gray N/A region on the wall.
         const frac = (h % 1000) / 1000;
-        yPositions.push(-(NA_DAYS_MIN + frac * (NA_DAYS_MAX - NA_DAYS_MIN)) * Y_SCALE);
+        yPositions.push(-(NA_DAYS_MIN + frac * (NA_DAYS_MAX - NA_DAYS_MIN)) * BUBBLE_Y_SCALE);
       }
     });
 
@@ -555,7 +576,7 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
     assets.forEach((asset, i) => {
       const r   = radii[i];
 
-      // Ticker label — above the bubble
+      // Ticker label — inside the bubble, scaled to fit
       const canvas = document.createElement("canvas");
       canvas.width = 96; canvas.height = 44;
       const ctx = canvas.getContext("2d")!;
@@ -566,27 +587,27 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
       ctx.fillText(asset.ticker, 48, 22);
       const tex = new THREE.CanvasTexture(canvas);
       const sp  = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-      sp.position.set(positions[i].x, positions[i].y + r + 0.14, positions[i].z);
-      sp.scale.set(0.54, 0.248, 1);
+      sp.position.set(positions[i].x, positions[i].y, positions[i].z);
+      sp.scale.set(r * 1.6, r * 0.7, 1);
       bubbleGroup.add(sp);
 
-      // Percent change — centered on the bubble, green/pink
-      const pct    = asset.changePct;
-      const pctStr = (pct >= 0 ? "+" : "") + pct.toFixed(1) + "%";
-      const pctColor = pct >= 0 ? "#00d282" : "#f3a0f4";
-      const pc = document.createElement("canvas");
-      pc.width = 96; pc.height = 36;
-      const pctx = pc.getContext("2d")!;
-      pctx.font = "bold 22px 'JetBrains Mono', monospace";
-      pctx.fillStyle = pctColor;
-      pctx.textAlign = "center";
-      pctx.textBaseline = "middle";
-      pctx.fillText(pctStr, 48, 18);
-      const pctTex = new THREE.CanvasTexture(pc);
-      const pctSp  = new THREE.Sprite(new THREE.SpriteMaterial({ map: pctTex, transparent: true, depthWrite: false }));
-      pctSp.position.set(positions[i].x, positions[i].y, positions[i].z);
-      pctSp.scale.set(r * 2.2, r * 0.8, 1);
-      bubbleGroup.add(pctSp);
+      // Percent change label — hidden for now
+      // const pct    = asset.changePct;
+      // const pctStr = (pct >= 0 ? "+" : "") + pct.toFixed(1) + "%";
+      // const pctColor = `#${changePctColor(asset.changePct).getHexString()}`;
+      // const pc = document.createElement("canvas");
+      // pc.width = 96; pc.height = 36;
+      // const pctx = pc.getContext("2d")!;
+      // pctx.font = "bold 22px 'JetBrains Mono', monospace";
+      // pctx.fillStyle = pctColor;
+      // pctx.textAlign = "center";
+      // pctx.textBaseline = "middle";
+      // pctx.fillText(pctStr, 48, 18);
+      // const pctTex = new THREE.CanvasTexture(pc);
+      // const pctSp  = new THREE.Sprite(new THREE.SpriteMaterial({ map: pctTex, transparent: true, depthWrite: false }));
+      // pctSp.position.set(positions[i].x, positions[i].y, positions[i].z);
+      // pctSp.scale.set(r * 2.2, r * 0.8, 1);
+      // bubbleGroup.add(pctSp);
     });
 
     // ── Co-mention edges ──
@@ -920,29 +941,49 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
           tip.style.top     = `${(1 - (sp.y + 1) / 2) * rect.height - 10}px`;
           tip.style.display = "block";
           const pct      = asset.changePct;
-          const pctColor = pct >= 0 ? "#6DFFC4" : "#F3A0F4";
+          const pctColor = `#${changePctColor(pct).getHexString()}`;
+          const bc = changePctColor(pct);
+          const br = Math.round(bc.r * 255), bg2 = Math.round(bc.g * 255), bb = Math.round(bc.b * 255);
+          tip.style.background = `rgba(${br},${bg2},${bb},0.20)`;
+          // Earnings colour: cyan=future, yellow=past, white=today/imminent (with blink)
+          const d = asset.daysToEarnings;
+          const imminent = d !== null && d >= 0 && d <= 2;
+          let earningsColor: string;
+          if (d === null)      earningsColor = "rgba(160,160,160,0.7)";
+          else if (imminent)   earningsColor = "#ffffff";
+          else if (d > 0)      earningsColor = "#00d4ff";
+          else                 earningsColor = "#ffd700";
+          const earningsStyle = imminent
+            ? `color:${earningsColor};animation:earningsBlink 0.9s ease-in-out infinite`
+            : `color:${earningsColor}`;
+
+          // Sector colour: same as the wedge (changePct-derived for the sector)
+          const sectorChg = sectorChangePct[asset.sector] ?? 0;
+          const sectorCol = `#${changePctColor(sectorChg).getHexString()}`;
           const sentColor = asset.sentimentScore > 0 ? "#6DFFC4" : asset.sentimentScore < 0 ? "#F3A0F4" : "#aabbcc";
+          const fullName = TICKER_NAMES[asset.ticker] ?? asset.ticker;
           tip.innerHTML = `
-            <div style="font-size:14px;font-weight:700;color:#e8f4ff;font-family:'JetBrains Mono',monospace;margin-bottom:6px;letter-spacing:0.05em">${asset.ticker}</div>
-            <div style="color:rgba(160,200,255,0.6);font-size:10px;font-family:'JetBrains Mono',monospace;margin-bottom:8px;letter-spacing:0.08em">${asset.sector.toUpperCase()}</div>
+            <div style="font-size:14px;font-weight:700;color:#e8f4ff;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em">${asset.ticker}</div>
+            <div style="font-size:11px;color:rgba(220,235,255,0.70);font-family:'DM Sans',sans-serif;margin-bottom:6px">${fullName}</div>
+            <div style="color:${sectorCol};font-size:10px;font-family:'JetBrains Mono',monospace;margin-bottom:8px;letter-spacing:0.08em">${asset.sector.toUpperCase()}</div>
             <table style="width:100%;border-collapse:collapse;font-family:'DM Sans',sans-serif;font-size:11px">
-              <tr><td style="color:rgba(180,210,255,0.5);padding:1px 8px 1px 0">Price</td>
+              <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Price</td>
                   <td style="color:#e8f4ff;text-align:right">$${asset.price.toFixed(2)}</td></tr>
-              <tr><td style="color:rgba(180,210,255,0.5);padding:1px 8px 1px 0">Change</td>
+              <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Change</td>
                   <td style="color:${pctColor};text-align:right;font-weight:600">${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%</td></tr>
-              <tr><td style="color:rgba(180,210,255,0.5);padding:1px 8px 1px 0">Mkt Cap</td>
+              <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Market Cap</td>
                   <td style="color:#e8f4ff;text-align:right">${fmtMarketCap(asset.marketCap)}</td></tr>
-              <tr><td style="color:rgba(180,210,255,0.5);padding:1px 8px 1px 0">Beta</td>
+              <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Beta</td>
                   <td style="color:#e8f4ff;text-align:right">${asset.beta.toFixed(2)}</td></tr>
-              <tr><td style="color:rgba(180,210,255,0.5);padding:1px 8px 1px 0">Sentiment</td>
+              <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Sentiment</td>
                   <td style="color:${sentColor};text-align:right">${asset.sentimentScore > 0 ? "+" : ""}${asset.sentimentScore.toFixed(1)}</td></tr>
-              <tr><td style="color:rgba(180,210,255,0.5);padding:1px 8px 1px 0">Earnings</td>
-                  <td style="color:rgba(0,212,255,0.8);text-align:right;font-family:'JetBrains Mono',monospace;font-size:10px">${earningsLabel(asset.daysToEarnings)}</td></tr>
+              <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Earnings</td>
+                  <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:10px;${earningsStyle}">${earningsLabel(asset.daysToEarnings)}</td></tr>
             </table>`;
         }
       } else {
         hoveredIdx = -1;
-        if (tip) tip.style.display = "none";
+        if (tip) { tip.style.display = "none"; tip.style.background = "rgba(6,16,30,0.92)"; }
       }
 
       renderer.render(scene, camera);
@@ -970,7 +1011,6 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
       renderer.domElement.removeEventListener("mouseup",   onMouseUp);
       renderer.domElement.removeEventListener("click",     onClick);
       glassMesh.geometry.dispose(); glassMat.dispose(); scene.remove(glassMesh);
-      scene.remove(glareLight);
       renderer.dispose();
       if (mountRef.current?.contains(renderer.domElement)) mountRef.current.removeChild(renderer.domElement);
     };
@@ -985,7 +1025,7 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
       <div ref={tooltipRef} style={{
         display: "none", position: "absolute",
         background: "rgba(6,16,30,0.92)",
-        border: "1px solid rgba(0,180,255,0.20)",
+        border: "1px solid rgba(180,180,180,0.15)",
         borderRadius: 9, padding: "10px 14px",
         pointerEvents: "none",
         backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
