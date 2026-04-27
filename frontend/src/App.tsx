@@ -11,6 +11,7 @@ import { Footer } from "./components/Footer";
 import { Chatbot } from "./components/Chatbot";
 import { LoginPage } from "./components/LoginPage";
 import { RegisterPage } from "./components/RegisterPage";
+import { Dashboard } from "./pages/Dashboard";
 import type { AssetData } from "./components/SearchPanel";
 
 function LandingPage() {
@@ -33,9 +34,6 @@ function LandingPage() {
         <NewsAndMarket />
       </div>
       <FeatureCards />
-      {/* CORRECTION: Passed onExploreClick prop to RegistrationSection 
-          to enable the bottom button to trigger the scroll behavior.
-      */}
       <RegistrationSection onExploreClick={scrollToContent} />
       <Footer />
       <Chatbot />
@@ -51,6 +49,7 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/dashboard" element={<LandingPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
