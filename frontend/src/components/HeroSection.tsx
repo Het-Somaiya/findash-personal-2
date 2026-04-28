@@ -3,7 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { LandingMarketGlobe } from "./MarketGlobe";
 import { SearchPanel, type AssetData } from "./SearchPanel";
 import { useAuth } from "../lib/AuthContext";
-import { getTicker24hBars, type BarPoint } from "../lib/api";
+import {
+  getTicker24hBars,
+  type BarPoint,
+  fetchWatchlistSymbols,
+  fetchAssetData,
+  addWatchlistSymbol,
+  removeWatchlistSymbol,
+  reorderWatchlist,
+} from "../lib/api";
 
 const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
@@ -214,6 +222,7 @@ function DashboardCard({
 
 function LoggedInHero() {
   const navbarRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
 
   const [floatingAsset, setFloatingAsset] = useState<AssetData | null>(null);
   const [dashboardStocks, setDashboardStocks] = useState<AssetData[]>([]);
@@ -232,15 +241,37 @@ function LoggedInHero() {
     return () => clearTimeout(timer);
   }, [dashboardVisible]);
 
+  // Hydrate persisted watchlist on login: fetch symbols, then full asset data per symbol.
+  // Leaves the panel collapsed to the "OPEN DASHBOARD" pill — user clicks to expand.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const symbols = await fetchWatchlistSymbols();
+        if (cancelled || symbols.length === 0) return;
+        const assets = await Promise.all(
+          symbols.map(s => fetchAssetData(s).catch(() => null))
+        );
+        if (cancelled) return;
+        const valid = assets.filter((a): a is AssetData => !!a && !!a.ticker);
+        if (valid.length) setDashboardStocks(valid);
+      } catch { /* user has no watchlist yet, or auth failed — leave empty */ }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
   const handleAddToDashboard = useCallback((asset: AssetData) => {
     // 1. Instantly flip the button UI
     setAddedTicker(asset.ticker);
-    // 2. Add to list
+    // 2. Add to list (optimistic)
     setDashboardStocks(prev => {
       if (prev.find(s => s.ticker === asset.ticker)) return prev;
       return [...prev, asset];
     });
-    // 3. Open panel after short delay so globe resize doesn't interfere
+    // 3. Persist to server (fire-and-forget; idempotent on backend)
+    addWatchlistSymbol(asset.ticker).catch(() => { /* ignore; UI already updated */ });
+    // 4. Open panel after short delay so globe resize doesn't interfere
     setTimeout(() => setDashboardOpen(true), 50);
   }, []);
 
@@ -275,6 +306,7 @@ function LoggedInHero() {
       if (next.length === 0) setDashboardOpen(false);
       return next;
     });
+    removeWatchlistSymbol(ticker).catch(() => { /* ignore; UI already updated */ });
   }, []);
 
   // Show green badge if just clicked OR already in dashboard list
@@ -289,6 +321,7 @@ function LoggedInHero() {
         const next = [...prev];
         const [moved] = next.splice(dragIdx, 1);
         next.splice(dragOverIdx, 0, moved);
+        reorderWatchlist(next.map(s => s.ticker)).catch(() => { /* ignore */ });
         return next;
       });
     }

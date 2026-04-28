@@ -25,28 +25,24 @@ const api = axios.create({
   },
 });
 
+// Module-scope access token. AuthContext keeps this in sync via setAuthToken()
+// so the interceptor below always sees the current JWT — without putting the
+// access token in localStorage (refresh stays in an httpOnly cookie).
+let currentAccessToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  currentAccessToken = token;
+}
+
 // Request Interceptor: Automatically attach JWT token to every request
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("findash_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (currentAccessToken) {
+      config.headers.Authorization = `Bearer ${currentAccessToken}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
-);
-
-// Response Interceptor: Handle session expiration
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("findash_token");
-      window.location.href = "/login";
-    }
-    return Promise.reject(error);
-  }
 );
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -334,4 +330,28 @@ export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
     return FLAT_LINE;
   }
 }
+// ─── Watchlist (per-user dashboard) ──────────────────────────────────────────
+
+export async function fetchWatchlistSymbols(): Promise<string[]> {
+  const res = await api.get("/api/watchlist/");
+  return Array.isArray(res.data?.symbols) ? res.data.symbols : [];
+}
+
+export async function fetchAssetData(symbol: string) {
+  const res = await api.get("/api/asset/", { params: { symbol } });
+  return res.data;
+}
+
+export async function addWatchlistSymbol(symbol: string): Promise<void> {
+  await api.post("/api/watchlist/items/", { symbol });
+}
+
+export async function removeWatchlistSymbol(symbol: string): Promise<void> {
+  await api.delete(`/api/watchlist/items/${encodeURIComponent(symbol)}/`);
+}
+
+export async function reorderWatchlist(symbols: string[]): Promise<void> {
+  await api.patch("/api/watchlist/reorder/", { symbols });
+}
+
 export { MOCK_QUOTES, MOCK_SUGGESTIONS };
