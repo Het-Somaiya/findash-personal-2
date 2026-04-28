@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, auth_views
+from . import views, auth_views, watchlist_views
 from .chat import chat
 
 urlpatterns = [
@@ -21,4 +21,10 @@ urlpatterns = [
     path('auth/refresh/', auth_views.refresh, name='auth-refresh'),
     path('auth/me/', auth_views.me, name='auth-me'),
     path('auth/sessions/', auth_views.sessions, name='auth-sessions'),
+
+    # Watchlist (per-user dashboard)
+    path('watchlist/', watchlist_views.list_watchlist, name='watchlist-list'),
+    path('watchlist/items/', watchlist_views.add_item, name='watchlist-add'),
+    path('watchlist/items/<str:symbol>/', watchlist_views.remove_item, name='watchlist-remove'),
+    path('watchlist/reorder/', watchlist_views.reorder, name='watchlist-reorder'),
 ]

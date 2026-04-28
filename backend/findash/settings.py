@@ -67,16 +67,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'findash.wsgi.application'
 
-# Database — SQLite by default, PostgreSQL if USE_POSTGRES=True
-if os.getenv('USE_POSTGRES', 'False') == 'True':
+# Database — Azure SQL primary, SQLite fallback when credentials are absent
+_db_host = os.getenv('DB_HOST', '')
+_db_user = os.getenv('DB_USER', '')
+_db_password = os.getenv('DB_PASSWORD', '')
+
+if _db_host and _db_user and _db_password:
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'findash'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5433'),
+            'ENGINE': 'mssql',
+            'NAME': os.getenv('DB_NAME', 'findash-sql-db'),
+            'HOST': _db_host,
+            'PORT': os.getenv('DB_PORT', '1433'),
+            'USER': _db_user,
+            'PASSWORD': _db_password,
+            'OPTIONS': {
+                'driver': 'ODBC Driver 18 for SQL Server',
+            },
         }
     }
 else:
@@ -94,6 +101,9 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
 }
 
@@ -144,3 +154,26 @@ AZURE_OPENAI_API_KEY = os.getenv('AZURE_OPENAI_API_KEY', '')
 AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT', '')
 AZURE_OPENAI_DEPLOYMENT = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o-mini')
 AZURE_OPENAI_API_VERSION = os.getenv('AZURE_OPENAI_API_VERSION', '2025-01-01-preview')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {
+            'format': '[{levelname}] {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'core': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
