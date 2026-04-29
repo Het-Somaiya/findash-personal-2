@@ -1,3 +1,4 @@
+import axios from "axios";
 /**
  * FinDash — Unified API layer
  *
@@ -15,6 +16,34 @@ const MASSIVE_BASE    = "https://api.massive.com";
 const MOCK = !MASSIVE_API_KEY || MASSIVE_API_KEY === "your-massive-api-key-here";
 
 const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+
+// Create an Axios instance for the Django backend
+const api = axios.create({
+  baseURL: BACKEND_BASE,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Module-scope access token. AuthContext keeps this in sync via setAuthToken()
+// so the interceptor below always sees the current JWT — without putting the
+// access token in localStorage (refresh stays in an httpOnly cookie).
+let currentAccessToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  currentAccessToken = token;
+}
+
+// Request Interceptor: Automatically attach JWT token to every request
+api.interceptors.request.use(
+  (config) => {
+    if (currentAccessToken) {
+      config.headers.Authorization = `Bearer ${currentAccessToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -198,6 +227,7 @@ export async function getMarketSnapshot(symbols: string[]): Promise<MarketSnapsh
       });
     });
   } catch {
+    // 3. Complete Fallback: If the server is down, use all mock data
     return symbols.map(sym => {
       const q = MOCK_QUOTES[sym];
       return q ? quoteToSnapshot(q) : { label: sym, value: "—", change: "—", up: true };
@@ -244,11 +274,15 @@ const FALLBACK_NEWS: NewsArticle[] = [
 
 export async function getNews(): Promise<NewsResponse> {
   try {
-    const res = await fetch(`${BACKEND_BASE}/api/news/`, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    // 1. Use the 'api' instance to call the backend with an 8-second timeout
+    const res = await api.get("/api/news/", { 
+      timeout: 8000 
+    });
+    
+    const data = res.data;
+    
 
-    // Natasha's backend returns { articles, quotes, topStocks, topSignals }
+    // 2. Handle the response data (Backend returns { articles, quotes, topStocks, topSignals })
     const rawArticles: Array<{
       id: number | string; headline: string; source: string;
       time: string; tickers: string[]; url: string; image?: string; summary?: string;
@@ -270,26 +304,54 @@ export async function getNews(): Promise<NewsResponse> {
       topStocks: data.topStocks || [],
       topSignals: data.topSignals || [],
     };
-  } catch {
-    return { articles: FALLBACK_NEWS, fromBackend: false, quotes: {}, topStocks: [], topSignals: [] };
+  } catch (error) {
+    // 3. Fallback to hardcoded news if the API is unreachable
+    return { 
+      articles: FALLBACK_NEWS, 
+      fromBackend: false, 
+      quotes: {}, 
+      topStocks: [], 
+      topSignals: [] 
+    };
   }
 }
 
 // ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
 
 export interface BarPoint { t: number; c: number; }
-
 const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
 
 export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
   try {
-    const res = await fetch(`${BACKEND_BASE}/api/bars/?symbol=${encodeURIComponent(symbol)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data: { bars: BarPoint[] } = await res.json();
-    return data.bars.length > 0 ? data.bars : FLAT_LINE;
-  } catch {
+    const res = await api.get("/api/bars/", { params: { symbol } });
+    const data = res.data;
+    return data.bars && data.bars.length > 0 ? data.bars : FLAT_LINE;
+  } catch (error) {
     return FLAT_LINE;
   }
+}
+// ─── Watchlist (per-user dashboard) ──────────────────────────────────────────
+
+export async function fetchWatchlistSymbols(): Promise<string[]> {
+  const res = await api.get("/api/watchlist/");
+  return Array.isArray(res.data?.symbols) ? res.data.symbols : [];
+}
+
+export async function fetchAssetData(symbol: string) {
+  const res = await api.get("/api/asset/", { params: { symbol } });
+  return res.data;
+}
+
+export async function addWatchlistSymbol(symbol: string): Promise<void> {
+  await api.post("/api/watchlist/items/", { symbol });
+}
+
+export async function removeWatchlistSymbol(symbol: string): Promise<void> {
+  await api.delete(`/api/watchlist/items/${encodeURIComponent(symbol)}/`);
+}
+
+export async function reorderWatchlist(symbols: string[]): Promise<void> {
+  await api.patch("/api/watchlist/reorder/", { symbols });
 }
 
 export { MOCK_QUOTES, MOCK_SUGGESTIONS };

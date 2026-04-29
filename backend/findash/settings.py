@@ -14,8 +14,13 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me-in-produc
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.github.dev',
+    '.app.github.dev',
+    '.preview.app.github.dev',
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -33,8 +38,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -61,7 +66,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'findash.wsgi.application'
-
 
 # Database — Azure SQL primary, SQLite fallback when credentials are absent
 _db_host = os.getenv('DB_HOST', '')
@@ -90,7 +94,6 @@ else:
         }
     }
 
-
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
@@ -104,29 +107,6 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Simple JWT
-from datetime import timedelta  # noqa: E402
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'JTI_CLAIM': 'jti',
-}
-
-# Auth cookie (httpOnly refresh token)
-AUTH_COOKIE_NAME = 'findash_refresh'
-AUTH_COOKIE_SECURE = not DEBUG
-AUTH_COOKIE_HTTPONLY = True
-AUTH_COOKIE_SAMESITE = 'Lax'
-AUTH_COOKIE_PATH = '/api/auth/'
-AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
-
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -138,13 +118,10 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
-
 STATIC_URL = 'static/'
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'core.User'
-
 AUTHENTICATION_BACKENDS = ['core.auth_backend.EmailBackend']
 
 # CORS — allow the Vite dev server
@@ -154,10 +131,25 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# Finnhub
-FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
+# Secure Proxy Setting
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Azure OpenAI
+# Cookie Settings
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = False
+
+# Auth cookie settings
+AUTH_COOKIE_NAME = 'findash_refresh'
+AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
+AUTH_COOKIE_SECURE = False
+AUTH_COOKIE_HTTPONLY = True
+AUTH_COOKIE_SAMESITE = 'Lax'
+AUTH_COOKIE_PATH = '/api/auth/'
+
+# Finnhub & OpenAI
+FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
 AZURE_OPENAI_API_KEY = os.getenv('AZURE_OPENAI_API_KEY', '')
 AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT', '')
 AZURE_OPENAI_DEPLOYMENT = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o-mini')

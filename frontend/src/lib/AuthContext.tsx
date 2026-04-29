@@ -16,6 +16,7 @@ import {
   apiRegister,
   type AuthUser,
 } from "./auth-api";
+import { setAuthToken } from "./api";
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -42,9 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { access } = await apiRefresh();
         setAccessToken(access);
+        setAuthToken(access);
       } catch {
         setUser(null);
         setAccessToken(null);
+        setAuthToken(null);
         clearInterval(refreshTimer.current);
       }
     }, REFRESH_INTERVAL_MS);
@@ -58,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { access } = await apiRefresh();
         if (cancelled) return;
         setAccessToken(access);
+        setAuthToken(access);
         const me = await apiGetMe(access);
         if (cancelled) return;
         setUser(me);
@@ -78,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const res = await apiLogin(email, password);
       setAccessToken(res.access);
+      setAuthToken(res.access);
       setUser(res.user);
       startRefreshTimer();
     },
@@ -88,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, name: string, password: string) => {
       const res = await apiRegister(email, name, password);
       setAccessToken(res.access);
+      setAuthToken(res.access);
       setUser(res.user);
       startRefreshTimer();
     },
@@ -98,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiLogout();
     setUser(null);
     setAccessToken(null);
+    setAuthToken(null);
     clearInterval(refreshTimer.current);
   }, []);
 
