@@ -66,12 +66,22 @@ jobs:
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
-      - name: Install backend dependencies (validation only)
+      - name: Install backend dependencies
         working-directory: backend
         run: |
           python -m venv venv
           source venv/bin/activate
           pip install -r requirements.txt
+
+      - name: Collect static files (so WhiteNoise can serve them in prod)
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: build-time-only
+          DEBUG: 'False'
+          ALLOWED_HOSTS: '*'
+        run: |
+          source venv/bin/activate
+          python manage.py collectstatic --noinput
 
       # Optional: run tests here (python manage.py test)
 
