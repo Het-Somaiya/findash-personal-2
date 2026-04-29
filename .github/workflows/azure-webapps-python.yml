@@ -22,7 +22,7 @@ name: fin-dash
 env:
   AZURE_WEBAPP_NAME: fin-dash         # ← change to your Azure App Service name
   PYTHON_VERSION: '3.12'
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 on:
   push:
