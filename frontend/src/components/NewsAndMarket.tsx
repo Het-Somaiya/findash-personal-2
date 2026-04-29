@@ -220,7 +220,7 @@ export function NewsAndMarket() {
                 transform: isHovered ? "scale(1.012)" : "scale(1)",
                 transition: "transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease",
                 display: "flex" as const, flexDirection: "column" as const, gap: 9,
-                cursor: "pointer" as const, transition: "all 0.2s",
+                cursor: "pointer" as const,
                 textDecoration: "none",
               };
 
