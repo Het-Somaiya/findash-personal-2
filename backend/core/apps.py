@@ -18,3 +18,10 @@ class CoreConfig(AppConfig):
             logger.info(f"Database: Azure SQL — {host}/{db_name}")
         else:
             logger.info(f"Database: SQLite — {db_name}")
+
+        try:
+            from .graphrag.health import run_graphrag_health_check
+
+            run_graphrag_health_check()
+        except Exception as exc:
+            logger.warning("GraphRAG startup health check failed: %s", exc)
