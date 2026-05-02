@@ -10,12 +10,12 @@ import logging
 from asgiref.sync import async_to_sync
 from openai import AzureOpenAI
 from django.conf import settings
+from neo4j import AsyncGraphDatabase
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .graphrag.intent import IntentClassifier
 from .graphrag.llm import AzureChatLLM
-from .graphrag.neo4j import get_neo4j_driver
 from .graphrag.resolver import EntityResolver
 from .graphrag.retriever import SubgraphRetriever
 from .graphrag.service import ChatService
@@ -71,15 +71,21 @@ def _answer_with_public_azure(user_message, history):
 
 async def _answer_with_graphrag(user_message):
     llm = AzureChatLLM()
-    driver = get_neo4j_driver()
-    service = ChatService(
-        classifier=IntentClassifier(llm),
-        resolver=EntityResolver(driver),
-        retriever=SubgraphRetriever(driver),
-        synthesizer=Synthesizer(llm),
-        base_llm=llm,
+    driver = AsyncGraphDatabase.driver(
+        settings.NEO4J_URI,
+        auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
     )
-    return await service.answer(user_message)
+    try:
+        service = ChatService(
+            classifier=IntentClassifier(llm),
+            resolver=EntityResolver(driver),
+            retriever=SubgraphRetriever(driver),
+            synthesizer=Synthesizer(llm),
+            base_llm=llm,
+        )
+        return await service.answer(user_message)
+    finally:
+        await driver.close()
 
 
 def _serialize_graphrag_response(response: ChatResponse):
