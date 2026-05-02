@@ -69,14 +69,16 @@ WSGI_APPLICATION = 'findash.wsgi.application'
 _db_host = os.getenv('DB_HOST', '')
 _db_user = os.getenv('DB_USER', '')
 _db_password = os.getenv('DB_PASSWORD', '')
+_db_name = os.getenv('DB_NAME') or 'findash-sql-db'
+_db_port = os.getenv('DB_PORT') or '1433'
 
 if _db_host and _db_user and _db_password:
     DATABASES = {
         'default': {
             'ENGINE': 'mssql',
-            'NAME': os.getenv('DB_NAME', 'findash-sql-db'),
+            'NAME': _db_name,
             'HOST': _db_host,
-            'PORT': os.getenv('DB_PORT', '1433'),
+            'PORT': _db_port,
             'USER': _db_user,
             'PASSWORD': _db_password,
             'OPTIONS': {
