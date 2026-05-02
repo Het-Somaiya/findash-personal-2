@@ -4,6 +4,7 @@ Django settings for findash project.
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -72,7 +73,19 @@ _db_password = os.getenv('DB_PASSWORD', '')
 _db_name = os.getenv('DB_NAME') or 'findash-sql-db'
 _db_port = os.getenv('DB_PORT') or '1433'
 
-if _db_host and _db_user and _db_password:
+# Route the test runner to a local SQLite DB regardless of .env contents:
+# Azure SQL test-DB provisioning is slow and leaves orphan schemas behind on
+# crashed runs. Real dev/prod still use the .env credentials below.
+_running_tests = 'test' in sys.argv
+
+if _running_tests:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+elif _db_host and _db_user and _db_password:
     DATABASES = {
         'default': {
             'ENGINE': 'mssql',
