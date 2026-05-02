@@ -312,38 +312,52 @@ class SubgraphRetriever:
     ) -> HeadlineOpportunityResult | None:
         """Return companies whose mentions involve the resolved entities.
 
-        Filters by direction (POSITIVE for opportunity, NEGATIVE for
-        exposure). When direction is ANY, returns both sides without
-        a direction filter.
+        Direction is preserved as user intent metadata, but the Cypher does
+        not filter on m.direction. The v1 graph is built primarily from risk
+        disclosures, so POSITIVE mentions are too sparse to support beneficiary
+        retrieval directly. We instead retrieve disclosed exposure to the
+        resolved entities and let synthesis explain what the filings can and
+        cannot support.
 
-        If no entities resolved, we return None and the service falls
-        back. Partial resolution (some hit, some miss) still proceeds
-        with what was resolved; the unresolved phrases are reported in
-        notes for transparency.
+        If no entities resolved, we can still retrieve by concept/theme
+        phrases such as "export controls" by matching mention framing,
+        evidence, and concept metadata. Partial entity resolution (some hit,
+        some miss) still proceeds with what was resolved; the unresolved
+        phrases are reported in notes for transparency.
         """
-        if not resolution.resolved:
+        theme_terms = [p.strip().lower() for p in intent.concept_phrases if p and p.strip()]
+        if not resolution.resolved and not theme_terms:
             return None
 
         entity_hashes = [e.entity_hash for e in resolution.resolved]
         direction = intent.direction_filter
 
-        # Build direction filter clause. We embed the literal here
-        # rather than parameterizing because it's a small enum and
-        # this lets us keep the WHERE clause simple.
-        if direction == Direction.POSITIVE:
-            direction_clause = "AND m.direction = 'POSITIVE'"
-        elif direction == Direction.NEGATIVE:
-            direction_clause = "AND m.direction = 'NEGATIVE'"
-        else:
-            direction_clause = ""
-
         # Step 1: aggregate per-company exposure.
-        company_cypher = f"""
-        MATCH (m:Mention)-[:INVOLVES]->(e:RawEntity)
-        WHERE e.hash IN $entity_hashes
-        {direction_clause}
-        WITH m
+        if entity_hashes:
+            company_cypher = """
+            MATCH (m:Mention)-[:INVOLVES]->(e:RawEntity)
+            WHERE e.hash IN $entity_hashes
+            WITH m
+            MATCH (f:Filing)-[:CONTAINS_MENTION]->(m)-[:INSTANCE_OF]->(con:Concept)
+            WITH f.ticker AS ticker, con.id AS concept_id, m, f.period AS period
+            WITH ticker,
+                 count(m) AS mention_count,
+                 collect(DISTINCT concept_id) AS concept_ids,
+                 max(period) AS latest_period
+            RETURN ticker, mention_count, concept_ids, latest_period
+            ORDER BY mention_count DESC
+            LIMIT $cap
+            """
+            company_params = {"entity_hashes": entity_hashes, "cap": MAX_COMPANY_SUMMARIES}
+        else:
+            company_cypher = """
         MATCH (f:Filing)-[:CONTAINS_MENTION]->(m)-[:INSTANCE_OF]->(con:Concept)
+            WHERE any(term IN $theme_terms WHERE
+                toLower(m.framing) CONTAINS term OR
+                toLower(m.evidence) CONTAINS term OR
+                toLower(con.id) CONTAINS replace(term, ' ', '_') OR
+                toLower(con.name) CONTAINS term
+            )
         WITH f.ticker AS ticker, con.id AS concept_id, m, f.period AS period
         WITH ticker,
              count(m) AS mention_count,
@@ -353,12 +367,12 @@ class SubgraphRetriever:
         ORDER BY mention_count DESC
         LIMIT $cap
         """
+            company_params = {"theme_terms": theme_terms, "cap": MAX_COMPANY_SUMMARIES}
 
         async with self._driver.session() as session:
             company_result = await session.run(
                 company_cypher,
-                entity_hashes=entity_hashes,
-                cap=MAX_COMPANY_SUMMARIES,
+                **company_params,
             )
             company_rows = [r async for r in company_result]
 
@@ -370,20 +384,59 @@ class SubgraphRetriever:
                 # One representative mention per top company is easier for the
                 # synthesizer to cite correctly than a global pool of latest
                 # high-magnitude mentions from unrelated tickers.
-                mentions_cypher = f"""
-                MATCH (m:Mention)-[:INVOLVES]->(e:RawEntity)
-                WHERE e.hash IN $entity_hashes
-                {direction_clause}
-                WITH m
+                if entity_hashes:
+                    mentions_cypher = """
+                    MATCH (m:Mention)-[:INVOLVES]->(e:RawEntity)
+                    WHERE e.hash IN $entity_hashes
+                    WITH m
+                    MATCH (f:Filing)-[:CONTAINS_MENTION]->(m)-[:INSTANCE_OF]->(con:Concept)
+                    WHERE f.ticker IN $tickers
+                    WITH f, m, con
+                    ORDER BY
+                      f.ticker,
+                      CASE m.magnitude WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END,
+                      CASE m.confidence WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 ELSE 3 END,
+                      f.period DESC
+                    WITH f.ticker AS ticker, collect({
+                      period: f.period,
+                      accession: f.accession,
+                      section: m.section,
+                      concept_id: con.id,
+                      framing: m.framing,
+                      evidence: m.evidence,
+                      direction: m.direction,
+                      magnitude: m.magnitude,
+                      confidence: m.confidence
+                    })[0] AS row
+                    RETURN ticker, row.period AS period, row.accession AS accession,
+                           row.section AS section, row.concept_id AS concept_id,
+                           row.framing AS framing, row.evidence AS evidence,
+                           row.direction AS direction, row.magnitude AS magnitude,
+                           row.confidence AS confidence
+                    LIMIT $cap
+                    """
+                    mention_params = {
+                        "entity_hashes": entity_hashes,
+                        "tickers": top_tickers,
+                        "cap": MAX_SAMPLE_MENTIONS,
+                    }
+                else:
+                    mentions_cypher = """
                 MATCH (f:Filing)-[:CONTAINS_MENTION]->(m)-[:INSTANCE_OF]->(con:Concept)
                 WHERE f.ticker IN $tickers
+                    AND any(term IN $theme_terms WHERE
+                        toLower(m.framing) CONTAINS term OR
+                        toLower(m.evidence) CONTAINS term OR
+                        toLower(con.id) CONTAINS replace(term, ' ', '_') OR
+                        toLower(con.name) CONTAINS term
+                    )
                 WITH f, m, con
                 ORDER BY
                   f.ticker,
                   CASE m.magnitude WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 ELSE 2 END,
                   CASE m.confidence WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 ELSE 3 END,
                   f.period DESC
-                WITH f.ticker AS ticker, collect({{
+                WITH f.ticker AS ticker, collect({
                   period: f.period,
                   accession: f.accession,
                   section: m.section,
@@ -393,7 +446,7 @@ class SubgraphRetriever:
                   direction: m.direction,
                   magnitude: m.magnitude,
                   confidence: m.confidence
-                }})[0] AS row
+                })[0] AS row
                 RETURN ticker, row.period AS period, row.accession AS accession,
                        row.section AS section, row.concept_id AS concept_id,
                        row.framing AS framing, row.evidence AS evidence,
@@ -401,18 +454,22 @@ class SubgraphRetriever:
                        row.confidence AS confidence
                 LIMIT $cap
                 """
+                    mention_params = {
+                        "theme_terms": theme_terms,
+                        "tickers": top_tickers,
+                        "cap": MAX_SAMPLE_MENTIONS,
+                    }
 
                 mentions_result = await session.run(
                     mentions_cypher,
-                    entity_hashes=entity_hashes,
-                    tickers=top_tickers,
-                    cap=MAX_SAMPLE_MENTIONS,
+                    **mention_params,
                 )
                 mention_rows = [r async for r in mentions_result]
 
         return HeadlineOpportunityResult(
             direction_filter=direction,
             matched_entities=resolution.resolved,
+            theme_phrases=intent.concept_phrases,
             company_summaries=[
                 CompanyExposureSummary(
                     ticker=r["ticker"],
@@ -469,9 +526,15 @@ class SubgraphRetriever:
     ) -> list[str]:
         notes: list[str] = []
         if not resolution.resolved:
-            notes.append("no entity phrases resolved against the graph")
-            return notes
-        notes.append(f"resolved entities: {', '.join(e.canonical_name for e in resolution.resolved)}")
+            if intent.concept_phrases:
+                notes.append(
+                    f"no entity phrases resolved; using theme search: {', '.join(intent.concept_phrases)}"
+                )
+            else:
+                notes.append("no entity phrases resolved against the graph")
+                return notes
+        else:
+            notes.append(f"resolved entities: {', '.join(e.canonical_name for e in resolution.resolved)}")
         if resolution.unresolved_phrases:
             notes.append(
                 f"unresolved phrases: {', '.join(resolution.unresolved_phrases)}"
@@ -481,5 +544,8 @@ class SubgraphRetriever:
                 f"{len(payload.company_summaries)} companies, "
                 f"{len(payload.sample_mentions)} sample mentions"
             )
-            notes.append(f"direction filter: {intent.direction_filter.value}")
+            notes.append(
+                f"requested direction: {intent.direction_filter.value}; "
+                "retrieved disclosed exposure without direction filtering"
+            )
         return notes

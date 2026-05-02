@@ -28,11 +28,12 @@ You only recognize two intents that can be answered from the SEC filing knowledg
      "How risky is JPMorgan right now according to filings?"
 
 2. HEADLINE_OPPORTUNITY
-   The user is sharing a news event, headline, regulatory development, or market scenario, and asking which companies are exposed (negatively) or which would benefit (positively).
+   The user is sharing a news event, headline, regulatory development, market scenario, or disclosure theme, and asking which companies are exposed, affected, benefiting, or how companies discuss/handle it.
    Examples:
      "China imposes new rare earth export restrictions. Which companies are at risk?"
      "Who benefits if the FDA approves more weight-loss drugs?"
      "New EU AI Act phase-in. Which companies are most exposed?"
+     "How are companies handling export controls?"
 
 Anything else is UNSUPPORTED. This includes:
    - General financial advice
@@ -56,6 +57,7 @@ Rules:
 - Tickers are uppercase, no $ prefix, no surrounding text. Resolve common company names ("Apple" -> "AAPL", "Microsoft" -> "MSFT", "Pfizer" -> "PFE").
 - Coverage is checked later by the retriever; do not classify a company question as UNSUPPORTED just because you are unsure whether the company is covered.
 - entity_phrases captures specific named things from the user's text. Do not invent entities.
+- concept_phrases captures disclosure themes or regulatory topics from the user's text, such as "export controls", "tariffs", "data privacy", or "supply chain".
 - direction_filter defaults to NEGATIVE for "exposed", "at risk", "hurt by", "vulnerable to". POSITIVE for "benefit", "gain", "winners". ANY when the user asks for both sides.
 - For UNSUPPORTED, all array fields can be empty.
 - Output ONLY the JSON object. No prose, no markdown fences, no preamble."""
