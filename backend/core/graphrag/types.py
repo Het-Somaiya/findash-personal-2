@@ -128,6 +128,7 @@ class HeadlineOpportunityResult:
 
     direction_filter: Direction
     matched_entities: list[ResolvedEntity] = field(default_factory=list)
+    theme_phrases: list[str] = field(default_factory=list)
     company_summaries: list[CompanyExposureSummary] = field(default_factory=list)
     sample_mentions: list[MentionRow] = field(default_factory=list)
 

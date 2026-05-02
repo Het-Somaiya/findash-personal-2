@@ -57,6 +57,7 @@ Rules:
 3. Do NOT cite mentions that don't support your specific claim.
 3a. Use ONLY citation tags that appear in the retrieval context. Never write a citation number that was not provided.
 3b. Aggregate overview lines are for orientation only. Do not cite them as evidence unless a numbered mention supports the same claim.
+3c. Refer to companies by ticker symbol only. Do not expand tickers into company names unless the name appears in the retrieval context.
 4. If the retrieval results are insufficient to answer fully, say so explicitly and answer what you can.
 5. Write in clear, professional prose. Use markdown for structure (headings, bullet points where genuinely useful). Keep your response focused and free of filler.
 6. Do NOT include a separate "Sources" or "References" section. Citations are inline only; the UI renders them.
@@ -176,13 +177,24 @@ Write your answer now. Cite every factual claim."""
     def _format_headline_summary(self, payload: HeadlineOpportunityResult) -> str:
         direction_label = self._direction_label(payload.direction_filter)
         entity_names = ", ".join(e.canonical_name for e in payload.matched_entities)
+        theme_names = ", ".join(payload.theme_phrases)
         top_tickers = ", ".join(cs.ticker for cs in payload.company_summaries)
         lines = [
-            f"Direction filter: {direction_label}",
-            f"Resolved entities from headline: {entity_names}",
+            f"Requested direction: {direction_label}",
+            "Retrieval basis: disclosed filing exposure to the resolved entities, without filtering by mention direction.",
+            f"Resolved entities from headline: {entity_names or 'None'}",
+            f"Theme phrases searched: {theme_names or 'None'}",
             f"Top companies with matching graph exposure: {top_tickers}",
             "Use the numbered mentions below as the only citation evidence.",
         ]
+        if payload.direction_filter == Direction.POSITIVE:
+            lines.append(
+                "Important: these filings do not directly identify beneficiaries. "
+                "Do not treat companies with low or absent exposure as beneficiaries. "
+                "If the user asks who benefits, state that the graph can ground "
+                "exposure, not beneficiary identification, unless a numbered mention "
+                "directly supports a benefit claim."
+            )
         return "\n".join(lines)
 
     def _format_mention(self, idx: int, m: MentionRow) -> str:
@@ -201,10 +213,10 @@ Write your answer now. Cite every factual claim."""
     @staticmethod
     def _direction_label(direction: Direction) -> str:
         if direction == Direction.POSITIVE:
-            return "POSITIVE (looking for beneficiaries)"
+            return "POSITIVE (user is asking about potential beneficiaries)"
         if direction == Direction.NEGATIVE:
-            return "NEGATIVE (looking for exposed companies)"
-        return "ANY (both sides of exposure)"
+            return "NEGATIVE (user is asking about exposed companies)"
+        return "ANY (user is asking for general handling or exposure)"
 
     # -----------------------------------------------------------------
     # Citation construction
