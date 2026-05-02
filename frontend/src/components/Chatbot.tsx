@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { useAuth } from "../lib/AuthContext";
 
 interface Message {
   role: "bot" | "user";
@@ -20,11 +21,17 @@ const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 async function getReply(
   question: string,
   history: { role: "user" | "assistant"; content: string }[],
+  accessToken: string | null,
 ): Promise<string> {
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
     const res = await fetch(`${API_BASE}/api/chat/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ message: question, history }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -39,6 +46,7 @@ const sans = "'DM Sans', sans-serif";
 const mono = "'JetBrains Mono', monospace";
 
 export function Chatbot() {
+  const { accessToken } = useAuth();
   const [open,     setOpen]     = useState(false);
   const [messages, setMessages] = useState<Message[]>(INITIAL);
   const [input,    setInput]    = useState("");
@@ -71,7 +79,7 @@ export function Chatbot() {
         content: m.text,
       }));
 
-    const reply = await getReply(text, history);
+    const reply = await getReply(text, history, accessToken);
     setMessages(m => [...m, { role: "bot", text: reply }]);
     setLoading(false);
   };
@@ -116,7 +124,7 @@ export function Chatbot() {
               marginLeft: "auto", fontFamily: mono, fontSize: 10,
               color: "rgba(255,255,255,0.28)", letterSpacing: "0.06em",
             }}>
-              FREE TIER
+              {accessToken ? "FILING GRAPH" : "FREE TIER"}
             </span>
           </div>
 

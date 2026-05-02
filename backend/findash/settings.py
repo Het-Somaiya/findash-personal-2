@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     # Local
-    'core',
+    'core.apps.CoreConfig',
 ]
 
 MIDDLEWARE = [
@@ -159,6 +159,17 @@ AZURE_OPENAI_API_KEY = os.getenv('AZURE_OPENAI_API_KEY', '')
 AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT', '')
 AZURE_OPENAI_DEPLOYMENT = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o-mini')
 AZURE_OPENAI_API_VERSION = os.getenv('AZURE_OPENAI_API_VERSION', '2025-01-01-preview')
+
+# Filing GraphRAG backing stores. The filing-intel-engine pipeline owns data
+# creation; this app only connects to migrated/snapshotted stores.
+FILING_GRAPH_ENABLED = os.getenv('FILING_GRAPH_ENABLED', 'False') == 'True'
+NEO4J_URI = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
+NEO4J_USER = os.getenv('NEO4J_USER', 'neo4j')
+NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD', '')
+QDRANT_HOST = os.getenv('QDRANT_HOST', 'localhost')
+QDRANT_PORT = int(os.getenv('QDRANT_PORT', '6333'))
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'findash')
 
 LOGGING = {
     'version': 1,
