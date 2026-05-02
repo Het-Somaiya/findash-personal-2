@@ -30,6 +30,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const REFRESH_INTERVAL_MS = 14 * 60 * 1000; // 14 minutes (access token lives 15)
+const LEGACY_TOKEN_KEY = "findash_token";
 
 // Bypass real auth so post-login UI renders without backend access.
 // Flip to false once the Azure SQL firewall is opened.
@@ -71,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (DEV_MOCK_AUTH) return;
     let cancelled = false;
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
     (async () => {
       try {
         const { access } = await apiRefresh();
@@ -116,11 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await apiLogout();
-    setUser(null);
-    setAccessToken(null);
-    setAuthToken(null);
-    clearInterval(refreshTimer.current);
+    try {
+      await apiLogout();
+    } finally {
+      localStorage.removeItem(LEGACY_TOKEN_KEY);
+      setUser(null);
+      setAccessToken(null);
+      setAuthToken(null);
+      clearInterval(refreshTimer.current);
+    }
   }, []);
 
   const value = useMemo(
