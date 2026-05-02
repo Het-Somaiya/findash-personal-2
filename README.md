@@ -117,6 +117,37 @@ The frontend will be available at `http://localhost:5173`.
 
 ---
 
+### Running Tests
+
+Backend tests run against an in-memory SQLite database — no `runserver`, frontend,
+or Azure SQL connection is required. Tests live in `backend/core/tests.py` and
+cover auth, watchlist, and backtest functionality (GraphRAG/chat is excluded).
+
+```bash
+cd backend
+source venv/bin/activate         # Windows: venv\Scripts\activate
+
+# Run all tests
+python manage.py test core
+
+# Verbose (show each test name)
+python manage.py test core -v 2
+
+# Stop on first failure
+python manage.py test core --failfast
+
+# Run a single test class
+python manage.py test core.tests.WatchlistTests
+
+# Run a single test method
+python manage.py test core.tests.RegisterTests.test_register_creates_user_and_returns_access_token
+
+# Run in parallel (faster)
+python manage.py test core --parallel
+```
+
+---
+
 ### Environment Variables (backend/.env)
 
 | Variable | Description | Default |
