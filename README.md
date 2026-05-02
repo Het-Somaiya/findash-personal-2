@@ -165,10 +165,16 @@ The backing Neo4j, Qdrant, and MongoDB stores are populated by
 snapshots. FinDash-web does not run ingestion. See
 `backend/core/graphrag/README.md` for the expected database state.
 
+For a local demo, run the filing-intel-engine stack or point these settings at
+the private dev database host. Keep those databases private; the web app should
+connect over localhost, Docker networking, or a trusted private network.
+
 ---
 
 ## Development Workflow
 
-- **Branch**: feature work happens on `dev/buddhsen`; production-ready code targets `release`
+- **Branch**: feature work happens on personal `dev/<name>` branches. Rebase
+  your branch onto `origin/develop`, open PRs into `develop`, and merge
+  `develop` into `release` only after integration testing.
 - **API**: Django REST Framework serves JSON at `/api/`; the React frontend consumes it via fetch/axios
 - **Data**: Delayed market and options data is pulled from free public APIs and stored in the database for serving to the frontend
