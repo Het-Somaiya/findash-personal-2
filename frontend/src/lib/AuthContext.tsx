@@ -34,7 +34,7 @@ const LEGACY_TOKEN_KEY = "findash_token";
 
 // Bypass real auth so post-login UI renders without backend access.
 // Flip to false once the Azure SQL firewall is opened.
-const DEV_MOCK_AUTH = true;
+const DEV_MOCK_AUTH = false;
 const MOCK_USER: AuthUser = {
   id: 0,
   email: "dev@local",
