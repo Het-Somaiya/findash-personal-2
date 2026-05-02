@@ -725,6 +725,7 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
     const raycaster  = new THREE.Raycaster();
     const mouse      = new THREE.Vector2(-99, -99);
     let   hoveredIdx = -1;
+    let   lastTooltipIdx = -2;   // tracks which ticker the tooltip HTML was rendered for
 
     // Drag state
     let isDragging    = false;
@@ -940,22 +941,25 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
           tip.style.left    = `${(sp.x + 1) / 2 * rect.width + 14}px`;
           tip.style.top     = `${(1 - (sp.y + 1) / 2) * rect.height - 10}px`;
           tip.style.display = "block";
+        }
+
+        // Only rewrite tooltip HTML when the hovered bubble changes — otherwise
+        // the CSS animation on the earnings <td> restarts every frame at 0%,
+        // making the blink invisible. Position updates above still run per-frame.
+        if (tip && hoveredIdx !== lastTooltipIdx) {
+          lastTooltipIdx = hoveredIdx;
           const pct      = asset.changePct;
           const pctColor = `#${changePctColor(pct).getHexString()}`;
           const bc = changePctColor(pct);
           const br = Math.round(bc.r * 255), bg2 = Math.round(bc.g * 255), bb = Math.round(bc.b * 255);
           tip.style.background = `rgba(${br},${bg2},${bb},0.20)`;
-          // Earnings colour: cyan=future, yellow=past, white=today/imminent (with blink)
+          // Earnings colour: white=today, cyan=future, yellow=past
           const d = asset.daysToEarnings;
-          const imminent = d !== null && d >= 0 && d <= 2;
           let earningsColor: string;
           if (d === null)      earningsColor = "rgba(160,160,160,0.7)";
-          else if (imminent)   earningsColor = "#ffffff";
+          else if (d === 0)    earningsColor = "#ffffff";
           else if (d > 0)      earningsColor = "#00d4ff";
           else                 earningsColor = "#ffd700";
-          const earningsStyle = imminent
-            ? `color:${earningsColor};animation:earningsBlink 0.9s ease-in-out infinite`
-            : `color:${earningsColor}`;
 
           // Sector colour: same as the wedge (changePct-derived for the sector)
           const sectorChg = sectorChangePct[asset.sector] ?? 0;
@@ -978,11 +982,12 @@ export function MarketGlobe({ assets, edges = [], onTickerClick }: MarketGlobePr
               <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Sentiment</td>
                   <td style="color:${sentColor};text-align:right">${asset.sentimentScore > 0 ? "+" : ""}${asset.sentimentScore.toFixed(1)}</td></tr>
               <tr><td style="color:rgba(220,235,255,0.80);padding:1px 8px 1px 0">Earnings</td>
-                  <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:10px;${earningsStyle}">${earningsLabel(asset.daysToEarnings)}</td></tr>
+                  <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:10px;color:${earningsColor}">${earningsLabel(asset.daysToEarnings)}</td></tr>
             </table>`;
         }
       } else {
         hoveredIdx = -1;
+        lastTooltipIdx = -2;
         if (tip) { tip.style.display = "none"; tip.style.background = "rgba(6,16,30,0.92)"; }
       }
 

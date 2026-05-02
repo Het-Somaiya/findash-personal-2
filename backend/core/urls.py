@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views, auth_views
+from .backtest import backtest_position
 from .chat import chat
 
 urlpatterns = [
@@ -12,6 +13,7 @@ urlpatterns = [
     path('asset/history/', views.asset_history, name='asset-history'),
     path('search/', views.ticker_search, name='ticker-search'),
     path('chat/', chat, name='chat'),
+    path('backtest/position/', backtest_position, name='backtest-position'),
 
     # Auth
     path('auth/register/', auth_views.register, name='auth-register'),
