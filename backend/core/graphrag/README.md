@@ -26,6 +26,13 @@ The ingestion pipeline remains in `filing-intel-engine`. Production data is a
 periodic snapshot, not live replication; production goes stale until the next
 dump/restore cycle.
 
+Snapshot export/import is owned by `filing-intel-engine`:
+
+- `scripts/db_export.sh` creates a timestamped Neo4j/Qdrant/MongoDB tarball.
+- `scripts/db_import.sh` restores that tarball into a target environment.
+- `docs/data_migration.md` is the operator runbook for pre-checks, restore,
+  validation, and rollback.
+
 ## Runtime Behavior
 
 - Unauthenticated `/api/chat/` requests keep the existing Azure free-tier path.
@@ -34,3 +41,14 @@ dump/restore cycle.
   defined in `service.py`.
 - Startup health checks log warnings for missing/empty Neo4j, Qdrant, or Mongo
   stores but do not crash Django.
+
+## Demo Checklist
+
+1. Set `FILING_GRAPH_ENABLED=True`.
+2. Configure Azure OpenAI settings.
+3. Point `NEO4J_URI`, `QDRANT_HOST`/`QDRANT_PORT`, and `MONGO_URI` at the
+   private migrated/dev databases.
+4. Start FinDash-web and log in.
+5. Confirm the chatbot label reads `FILING GRAPH`.
+6. Ask `What are NVDA's biggest filing risks?` and verify a cited graph answer.
+7. Ask an off-topic query and verify graceful fallback.
