@@ -1,11 +1,16 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
+import { X } from "lucide-react";
 
 const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
-export function RegistrationSection() {
+interface RegistrationSectionProps {
+  onExploreClick?: () => void;
+}
+
+export function RegistrationSection({ onExploreClick }: RegistrationSectionProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -13,6 +18,7 @@ export function RegistrationSection() {
 
   return (
     <section style={{
+      position: "relative",
       background: "rgba(8,10,16,0.70)",
       borderTop: "1px solid rgba(0,180,255,0.08)",
       backdropFilter: "blur(10px)",
@@ -20,6 +26,29 @@ export function RegistrationSection() {
       padding: "72px 32px",
       textAlign: "center",
     }}>
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        style={{
+          position: "absolute",
+          top: 24,
+          right: 24,
+          background: "transparent",
+          border: "none",
+          color: "rgba(180,210,255,0.45)",
+          cursor: "pointer",
+          padding: 4,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "color 0.2s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.color = "#e0f0ff")}
+        onMouseLeave={e => (e.currentTarget.style.color = "rgba(180,210,255,0.45)")}
+      >
+        <X size={20} />
+      </button>
+
       <h2 style={{
         fontFamily: serif, fontSize: 40,
         color: "#e0f0ff", marginBottom: 16, lineHeight: 1.15,
@@ -37,7 +66,7 @@ export function RegistrationSection() {
       </p>
       <div style={{ display: "flex", gap: 13, justifyContent: "center", marginBottom: 32 }}>
         <button
-          onClick={() => navigate("/register")}
+          onClick={onExploreClick}
           style={{
             padding: "13px 34px", borderRadius: 10,
             background: "rgba(0,180,255,0.18)",
@@ -49,9 +78,10 @@ export function RegistrationSection() {
           onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,180,255,0.28)")}
           onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,180,255,0.18)")}
         >
-          Start free
+          Explore free ↑
         </button>
         <button
+          onClick={() => navigate("/register")}
           style={{
             padding: "13px 34px", borderRadius: 10,
             background: "rgba(255,255,255,0.04)",
@@ -63,7 +93,7 @@ export function RegistrationSection() {
           onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
           onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
         >
-          See what's unlocked
+          See what's locked
         </button>
       </div>
       <p style={{

@@ -13,6 +13,7 @@ import { LoginPage } from "./components/LoginPage";
 import { RegisterPage } from "./components/RegisterPage";
 import { BacktestSection } from "./components/BacktestSection";
 import { useAuth } from "./lib/AuthContext";
+import { Dashboard } from "./pages/Dashboard";
 import type { AssetData } from "./components/SearchPanel";
 
 function LandingPage() {
@@ -37,7 +38,7 @@ function LandingPage() {
       </div>
       {user && <BacktestSection />}
       <FeatureCards />
-      <RegistrationSection />
+      <RegistrationSection onExploreClick={scrollToContent} />
       <Footer />
       <Chatbot />
     </>
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/dashboard" element={<LandingPage />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

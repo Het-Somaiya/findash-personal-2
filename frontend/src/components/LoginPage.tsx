@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
+import { X } from "lucide-react"; // Added the icon import
 
 const serif = "'DM Serif Display', serif";
 const sans = "'DM Sans', sans-serif";
@@ -41,6 +42,7 @@ export function LoginPage() {
       <form
         onSubmit={handleSubmit}
         style={{
+          position: "relative", // Required to anchor the absolute cross icon
           width: "100%",
           maxWidth: 400,
           background: "rgba(255,255,255,0.03)",
@@ -50,6 +52,30 @@ export function LoginPage() {
           backdropFilter: "blur(20px)",
         }}
       >
+        {/* Close Button */}
+        <button
+          type="button" // Prevents the button from submitting the login form
+          onClick={() => navigate("/")}
+          style={{
+            position: "absolute",
+            top: 20,
+            right: 20,
+            background: "transparent",
+            border: "none",
+            color: "rgba(180,210,255,0.45)",
+            cursor: "pointer",
+            padding: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "color 0.2s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#e0f0ff")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(180,210,255,0.45)")}
+        >
+          <X size={20} />
+        </button>
+
         <Link
           to="/"
           style={{

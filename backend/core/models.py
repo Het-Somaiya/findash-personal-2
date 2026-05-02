@@ -63,13 +63,15 @@ class Watchlist(models.Model):
 
 
 class WatchlistItem(models.Model):
-    watchlist = models.ForeignKey(Watchlist, on_delete=models.CASCADE)
+    watchlist = models.ForeignKey(Watchlist, on_delete=models.CASCADE, related_name="items")
     symbol = models.CharField(max_length=20)
+    position = models.IntegerField(default=0)
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "watchlist_items"
         unique_together = [("watchlist", "symbol")]
+        ordering = ["position", "added_at"]
 
     def __str__(self):
         return self.symbol
