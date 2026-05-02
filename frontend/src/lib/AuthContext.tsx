@@ -31,10 +31,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const REFRESH_INTERVAL_MS = 14 * 60 * 1000; // 14 minutes (access token lives 15)
 
+// Bypass real auth so post-login UI renders without backend access.
+// Flip to false once the Azure SQL firewall is opened.
+const DEV_MOCK_AUTH = true;
+const MOCK_USER: AuthUser = {
+  id: 0,
+  email: "dev@local",
+  name: "Dev",
+  created_at: new Date().toISOString(),
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(
+    DEV_MOCK_AUTH ? MOCK_USER : null,
+  );
+  const [accessToken, setAccessToken] = useState<string | null>(
+    DEV_MOCK_AUTH ? "mock-access-token" : null,
+  );
+  const [loading, setLoading] = useState(!DEV_MOCK_AUTH);
   const refreshTimer = useRef<ReturnType<typeof setInterval>>();
 
   const startRefreshTimer = useCallback(() => {
@@ -55,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Silent refresh on mount — restores session from httpOnly cookie
   useEffect(() => {
+    if (DEV_MOCK_AUTH) return;
     let cancelled = false;
     (async () => {
       try {

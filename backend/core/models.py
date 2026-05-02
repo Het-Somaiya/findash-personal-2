@@ -151,3 +151,21 @@ class TopSignal(models.Model):
 
     def __str__(self):
         return f"{self.ticker} {self.signal_type}"
+
+
+class PriceCache(models.Model):
+    """Daily close prices cached for backtesting. Keyed by (symbol, date)."""
+    symbol = models.CharField(max_length=20)
+    date = models.DateField()
+    close = models.FloatField()
+    fetched_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "price_cache"
+        unique_together = [("symbol", "date")]
+        indexes = [
+            models.Index(fields=["symbol", "date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.symbol} {self.date} {self.close}"

@@ -354,4 +354,54 @@ export async function reorderWatchlist(symbols: string[]): Promise<void> {
   await api.patch("/api/watchlist/reorder/", { symbols });
 }
 
+// ─── Backtesting API (Django backend) ────────────────────────────────────────
+
+export type LegType = "buy_and_hold" | "dca_weekly" | "dca_monthly";
+
+export interface BacktestPoint {
+  date:     string;   // YYYY-MM-DD
+  value:    number;   // current dollar value
+  deployed: number;   // total dollars invested by this date
+  pnl:      number;   // value − deployed
+  roi:      number;   // pnl / deployed (0 before deployment)
+}
+
+export interface BacktestLeg {
+  name:    string;
+  type:    LegType;
+  weight:  number;    // normalized share of capital (0-1)
+  capital: number;    // capital allocated to this leg
+  curve:   BacktestPoint[];
+}
+
+export interface BacktestResult {
+  asset:    string;
+  start:    string;
+  end:      string;
+  capital:  number;
+  position: { curve: BacktestPoint[] };
+  legs:     BacktestLeg[];
+}
+
+export interface BacktestRequest {
+  asset:   string;
+  legs?:   Array<{ name?: string; type: LegType; weight: number }>;
+  start?:  string;     // YYYY-MM-DD
+  end?:    string;     // YYYY-MM-DD
+  capital?: number;
+}
+
+export async function runBacktest(req: BacktestRequest): Promise<BacktestResult> {
+  const res = await fetch(`${BACKEND_BASE}/api/backtest/position/`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Backtest failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export { MOCK_QUOTES, MOCK_SUGGESTIONS };

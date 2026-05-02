@@ -11,12 +11,15 @@ import { Footer } from "./components/Footer";
 import { Chatbot } from "./components/Chatbot";
 import { LoginPage } from "./components/LoginPage";
 import { RegisterPage } from "./components/RegisterPage";
+import { BacktestSection } from "./components/BacktestSection";
+import { useAuth } from "./lib/AuthContext";
 import { Dashboard } from "./pages/Dashboard";
 import type { AssetData } from "./components/SearchPanel";
 
 function LandingPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
+  const { user } = useAuth();
 
   const scrollToContent = () => {
     contentRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -33,6 +36,7 @@ function LandingPage() {
       <div ref={contentRef}>
         <NewsAndMarket />
       </div>
+      {user && <BacktestSection />}
       <FeatureCards />
       <RegistrationSection onExploreClick={scrollToContent} />
       <Footer />
