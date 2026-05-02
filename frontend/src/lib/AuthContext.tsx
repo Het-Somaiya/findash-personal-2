@@ -30,6 +30,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const REFRESH_INTERVAL_MS = 14 * 60 * 1000; // 14 minutes (access token lives 15)
+const LEGACY_TOKEN_KEY = "findash_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Silent refresh on mount — restores session from httpOnly cookie
   useEffect(() => {
     let cancelled = false;
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
     (async () => {
       try {
         const { access } = await apiRefresh();
@@ -101,11 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await apiLogout();
-    setUser(null);
-    setAccessToken(null);
-    setAuthToken(null);
-    clearInterval(refreshTimer.current);
+    try {
+      await apiLogout();
+    } finally {
+      localStorage.removeItem(LEGACY_TOKEN_KEY);
+      setUser(null);
+      setAccessToken(null);
+      setAuthToken(null);
+      clearInterval(refreshTimer.current);
+    }
   }, []);
 
   const value = useMemo(
