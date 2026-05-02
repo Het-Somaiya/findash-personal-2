@@ -5,7 +5,7 @@ import axios from "axios";
  * Market data: Massive.com Stock API (mock mode by default)
  *   → Set MOCK = false and provide MASSIVE_API_KEY to go live
  *
- * News + tickers: Django backend at localhost:8000/api/news/
+ * News + tickers: Django backend at /api/news/ by default
  */
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@ const MASSIVE_BASE    = "https://api.massive.com";
 // Automatically uses live data when a real key is provided
 const MOCK = !MASSIVE_API_KEY || MASSIVE_API_KEY === "your-massive-api-key-here";
 
-const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "";
 
 // Create an Axios instance for the Django backend
 const api = axios.create({

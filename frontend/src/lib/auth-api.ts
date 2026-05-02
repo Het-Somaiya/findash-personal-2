@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 export interface AuthUser {
   id: number;
@@ -22,6 +22,17 @@ export interface ActiveSession {
 
 const authHeaders = { "Content-Type": "application/json" };
 
+function errorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") return fallback;
+  const data = payload as Record<string, unknown>;
+  for (const key of ["email", "password", "name", "non_field_errors", "detail", "error"]) {
+    const value = data[key];
+    if (Array.isArray(value) && value.length > 0) return String(value[0]);
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return fallback;
+}
+
 export async function apiRegister(
   email: string,
   name: string,
@@ -35,9 +46,7 @@ export async function apiRegister(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(
-      err.email?.[0] || err.password?.[0] || err.error || "Registration failed",
-    );
+    throw new Error(errorMessage(err, "Registration failed"));
   }
   return res.json();
 }
@@ -54,7 +63,7 @@ export async function apiLogin(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || "Invalid email or password");
+    throw new Error(errorMessage(err, "Invalid email or password"));
   }
   return res.json();
 }

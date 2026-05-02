@@ -49,7 +49,7 @@ export interface CoMentionEdge {
   sameDirection: boolean;
 }
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 interface MarketGlobeProps {
   assets: BubbleAsset[];

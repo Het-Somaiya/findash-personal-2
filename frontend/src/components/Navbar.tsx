@@ -4,7 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import { searchTickers, type TickerSuggestion } from "../lib/api";
 import { SearchPanel, ASSET_DB, type AssetData } from "./SearchPanel";
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 async function fetchAsset(symbol: string): Promise<AssetData | null> {
   try {

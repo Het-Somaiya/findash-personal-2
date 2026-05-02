@@ -32,7 +32,7 @@ import {
   ReferenceLine,
 } from "recharts";
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 // ─── Asset data shape ─────────────────────────────────────────────────────────
 

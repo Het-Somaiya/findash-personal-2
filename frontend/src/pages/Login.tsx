@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 const sans = "'DM Sans', sans-serif";
 const serif = "'DM Serif Display', serif";
