@@ -1,10 +1,11 @@
+import axios from "axios";
 /**
  * FinDash — Unified API layer
  *
  * Market data: Massive.com Stock API (mock mode by default)
  *   → Set MOCK = false and provide MASSIVE_API_KEY to go live
  *
- * News + tickers: Django backend at localhost:8000/api/news/
+ * News + tickers: Django backend at /api/news/ by default
  */
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -14,7 +15,7 @@ const MASSIVE_BASE    = "https://api.massive.com";
 // Automatically uses live data when a real key is provided
 const MOCK = !MASSIVE_API_KEY || MASSIVE_API_KEY === "your-massive-api-key-here";
 
-const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE    = import.meta.env.VITE_BACKEND_URL ?? "";
 
 // Create an Axios instance for the Django backend
 const api = axios.create({
@@ -24,28 +25,24 @@ const api = axios.create({
   },
 });
 
+// Module-scope access token. AuthContext keeps this in sync via setAuthToken()
+// so the interceptor below always sees the current JWT — without putting the
+// access token in localStorage (refresh stays in an httpOnly cookie).
+let currentAccessToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  currentAccessToken = token;
+}
+
 // Request Interceptor: Automatically attach JWT token to every request
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("findash_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (currentAccessToken) {
+      config.headers.Authorization = `Bearer ${currentAccessToken}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
-);
-
-// Response Interceptor: Handle session expiration
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("findash_token");
-      window.location.href = "/login";
-    }
-    return Promise.reject(error);
-  }
 );
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -322,41 +319,89 @@ export async function getNews(): Promise<NewsResponse> {
 // ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
 
 export interface BarPoint { t: number; c: number; }
-
 const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
 
 export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
   try {
-    // 1. Use the 'api' instance to call the backend (Interceptor adds the token)
-    const res = await api.get("/api/bars/", {
-      params: { symbol }
-    });
-    
+    const res = await api.get("/api/bars/", { params: { symbol } });
     const data = res.data;
-
-    // 2. Return the bars if they exist, otherwise fallback to a flat line
     return data.bars && data.bars.length > 0 ? data.bars : FLAT_LINE;
   } catch (error) {
-    // 3. Fallback: Return a zeroed-out line so the UI remains stable
     return FLAT_LINE;
   }
 }
+// ─── Watchlist (per-user dashboard) ──────────────────────────────────────────
 
-// ─── 24-hour bar data (for sparklines) ───────────────────────────────────────
+export async function fetchWatchlistSymbols(): Promise<string[]> {
+  const res = await api.get("/api/watchlist/");
+  return Array.isArray(res.data?.symbols) ? res.data.symbols : [];
+}
 
-export interface BarPoint { t: number; c: number; }
+export async function fetchAssetData(symbol: string) {
+  const res = await api.get("/api/asset/", { params: { symbol } });
+  return res.data;
+}
 
-const FLAT_LINE: BarPoint[] = Array.from({ length: 16 }, (_, i) => ({ t: i, c: 0 }));
+export async function addWatchlistSymbol(symbol: string): Promise<void> {
+  await api.post("/api/watchlist/items/", { symbol });
+}
 
-export async function getTicker24hBars(symbol: string): Promise<BarPoint[]> {
-  try {
-    const res = await fetch(`${BACKEND_BASE}/api/bars/?symbol=${encodeURIComponent(symbol)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data: { bars: BarPoint[] } = await res.json();
-    return data.bars.length > 0 ? data.bars : FLAT_LINE;
-  } catch {
-    return FLAT_LINE;
+export async function removeWatchlistSymbol(symbol: string): Promise<void> {
+  await api.delete(`/api/watchlist/items/${encodeURIComponent(symbol)}/`);
+}
+
+export async function reorderWatchlist(symbols: string[]): Promise<void> {
+  await api.patch("/api/watchlist/reorder/", { symbols });
+}
+
+// ─── Backtesting API (Django backend) ────────────────────────────────────────
+
+export type LegType = "buy_and_hold" | "dca_weekly" | "dca_monthly";
+
+export interface BacktestPoint {
+  date:     string;   // YYYY-MM-DD
+  value:    number;   // current dollar value
+  deployed: number;   // total dollars invested by this date
+  pnl:      number;   // value − deployed
+  roi:      number;   // pnl / deployed (0 before deployment)
+}
+
+export interface BacktestLeg {
+  name:    string;
+  type:    LegType;
+  weight:  number;    // normalized share of capital (0-1)
+  capital: number;    // capital allocated to this leg
+  curve:   BacktestPoint[];
+}
+
+export interface BacktestResult {
+  asset:    string;
+  start:    string;
+  end:      string;
+  capital:  number;
+  position: { curve: BacktestPoint[] };
+  legs:     BacktestLeg[];
+}
+
+export interface BacktestRequest {
+  asset:   string;
+  legs?:   Array<{ name?: string; type: LegType; weight: number }>;
+  start?:  string;     // YYYY-MM-DD
+  end?:    string;     // YYYY-MM-DD
+  capital?: number;
+}
+
+export async function runBacktest(req: BacktestRequest): Promise<BacktestResult> {
+  const res = await fetch(`${BACKEND_BASE}/api/backtest/position/`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Backtest failed: ${res.status}`);
   }
+  return res.json();
 }
 
 export { MOCK_QUOTES, MOCK_SUGGESTIONS };

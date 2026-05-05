@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
   const backendUrl = env.VITE_BACKEND_URL || "http://localhost:8000";
 
   return {
+    base: mode === "production" ? "/static/" : "/",
     plugins: [react()],
     resolve: {
       alias: {

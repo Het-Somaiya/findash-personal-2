@@ -10,10 +10,11 @@ The platform does **not** place trades or make predictions. Its purpose is to he
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 19 + TypeScript, Vite, Tailwind CSS v4 |
-| Backend | Django 6, Django REST Framework |
+| Frontend | React 18 + TypeScript, Vite |
+| Backend | Django 5.2, Django REST Framework |
 | Database | Azure SQL Database (primary) / SQLite (fallback) |
-| Language (BE) | Python 3.13 |
+| Filing GraphRAG | Neo4j, Qdrant, MongoDB, Azure OpenAI |
+| Language (BE) | Python 3.12+ |
 
 ---
 
@@ -33,7 +34,8 @@ FinDash-web/
 │
 └── backend/           # Django + DRF
     ├── findash/       # Django project (settings, urls, wsgi)
-    ├── core/          # Main Django app
+    ├── core/          # Main Django app, auth, chat, GraphRAG wiring
+    │   └── graphrag/  # Framework-free filing GraphRAG modules
     ├── manage.py
     ├── requirements.txt
     └── .env.example
@@ -115,6 +117,37 @@ The frontend will be available at `http://localhost:5173`.
 
 ---
 
+### Running Tests
+
+Backend tests run against an in-memory SQLite database — no `runserver`, frontend,
+or Azure SQL connection is required. Tests live in `backend/core/tests.py` and
+cover auth, watchlist, and backtest functionality (GraphRAG/chat is excluded).
+
+```bash
+cd backend
+source venv/bin/activate         # Windows: venv\Scripts\activate
+
+# Run all tests
+python manage.py test core
+
+# Verbose (show each test name)
+python manage.py test core -v 2
+
+# Stop on first failure
+python manage.py test core --failfast
+
+# Run a single test class
+python manage.py test core.tests.WatchlistTests
+
+# Run a single test method
+python manage.py test core.tests.RegisterTests.test_register_creates_user_and_returns_access_token
+
+# Run in parallel (faster)
+python manage.py test core --parallel
+```
+
+---
+
 ### Environment Variables (backend/.env)
 
 | Variable | Description | Default |
@@ -126,6 +159,18 @@ The frontend will be available at `http://localhost:5173`.
 | `DB_NAME` | Database name | `findash-sql-db` |
 | `DB_USER` | SQL admin username | — |
 | `DB_PASSWORD` | SQL admin password | — |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI key for chat | — |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI resource endpoint | — |
+| `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI deployment name | `gpt-4o-mini` |
+| `AZURE_OPENAI_API_VERSION` | Azure OpenAI API version | `2025-01-01-preview` |
+| `FILING_GRAPH_ENABLED` | Enable authenticated filing GraphRAG chat path | `False` |
+| `NEO4J_URI` | Filing graph Neo4j Bolt URI | `bolt://localhost:7687` |
+| `NEO4J_USER` | Filing graph Neo4j user | `neo4j` |
+| `NEO4J_PASSWORD` | Filing graph Neo4j password | — |
+| `QDRANT_HOST` | Filing embedding store host | `localhost` |
+| `QDRANT_PORT` | Filing embedding store port | `6333` |
+| `MONGO_URI` | Filing metadata MongoDB URI | `mongodb://localhost:27017` |
+| `MONGO_DB_NAME` | Filing metadata MongoDB database | `findash` |
 
 ### Database Configuration
 
@@ -138,10 +183,29 @@ When `DB_HOST`, `DB_USER`, and `DB_PASSWORD` are set in `.env`, Django connects 
 2. Fill in `DB_PASSWORD` (ask the team lead)
 3. Run `npm run dev` — ODBC driver is auto-checked and migrations run automatically
 
+### Filing GraphRAG Chat
+
+`/api/chat/` keeps the existing public Azure chat behavior for unauthenticated
+users. When a request is authenticated and `FILING_GRAPH_ENABLED=True`, Django
+routes the message through `backend/core/graphrag/` and returns a cited filing
+answer when the graph has coverage. If the graph cannot answer, the service
+falls back to Azure chat with an explicit filing-graph coverage note.
+
+The backing Neo4j, Qdrant, and MongoDB stores are populated by
+`filing-intel-engine` and migrated into the FinDash environment as periodic
+snapshots. FinDash-web does not run ingestion. See
+`backend/core/graphrag/README.md` for the expected database state.
+
+For a local demo, run the filing-intel-engine stack or point these settings at
+the private dev database host. Keep those databases private; the web app should
+connect over localhost, Docker networking, or a trusted private network.
+
 ---
 
 ## Development Workflow
 
-- **Branch**: feature work happens on `dev/buddhsen`; production-ready code targets `release`
+- **Branch**: feature work happens on personal `dev/<name>` branches. Rebase
+  your branch onto `origin/develop`, open PRs into `develop`, and merge
+  `develop` into `release` only after integration testing.
 - **API**: Django REST Framework serves JSON at `/api/`; the React frontend consumes it via fetch/axios
 - **Data**: Delayed market and options data is pulled from free public APIs and stored in the database for serving to the frontend
