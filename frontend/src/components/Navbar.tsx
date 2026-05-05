@@ -4,7 +4,7 @@ import { useAuth } from "../lib/AuthContext";
 import { searchTickers, type TickerSuggestion } from "../lib/api";
 import { SearchPanel, ASSET_DB, type AssetData } from "./SearchPanel";
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 
 async function fetchAsset(symbol: string): Promise<AssetData | null> {
   try {
@@ -36,12 +36,7 @@ const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
-interface NavbarProps {
-  selectedAsset: AssetData | null;
-  onAssetSelect: (asset: AssetData | null) => void;
-}
-
-export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
+export function Navbar() {
   const navbarRef = useRef<HTMLDivElement>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout>>();
   const navigate = useNavigate();
@@ -52,13 +47,9 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
   const [focused,       setFocused]       = useState(false);
   const [scrolled,      setScrolled]      = useState(false);
   const [results,       setResults]       = useState<TickerSuggestion[]>([]);
-  const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
 
-  const [query,    setQuery]    = useState("");
-  const [suggIdx,  setSuggIdx]  = useState(0);
-  const [focused,  setFocused]  = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [results,  setResults]  = useState<TickerSuggestion[]>([]);
+  // Only used for logged-OUT users — logged-in users hand off to LoggedInHero
+  const [selectedAsset, setSelectedAsset] = useState<AssetData | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setSuggIdx(i => (i + 1) % SEARCH_SUGGESTIONS.length), 2800);
@@ -78,31 +69,38 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
     return () => { cancelled = true; };
   }, [query]);
 
-  useEffect(() => {
-    if (!selectedAsset) setQuery("");
-    else setQuery(selectedAsset.ticker);
-  }, [selectedAsset]);
-
   const handleSelect = (symbol: string) => {
     const key = symbol.toUpperCase();
-    const placeholder = ASSET_DB[key] ?? ({
+    const asset = ASSET_DB[key] ?? ({
       ticker: key, name: key, type: "STOCK", sector: "—",
-      price: 0, change: 0, changePct: 0, up: true,
-      volume: "—", avgVolume: "—", volRatio: 1,
-      marketCap: "—", pe: null, forwardPe: null, peg: null,
-      eps: null, revenueGrowth: null, revenueGrowthQoQ: null,
-      week52High: 0, week52Low: 0, week52Pos: 50,
-      nextEarnings: null, rsi: 50, beta: 1,
-      shortFloatPct: null, daysToCover: null,
-      institutionalOwnership: 0, insiderActivity: "neutral",
-      insiderNet: 0, dividendYield: null, freeCashFlow: null,
+      price: 0, change: 0, changePct: 0, up: true, volume: "—", avgVolume: "—", volRatio: 1,
+      marketCap: "—", pe: null, forwardPe: null, peg: null, eps: null, revenueGrowth: null,
+      revenueGrowthQoQ: null, week52High: 0, week52Low: 0, week52Pos: 50, nextEarnings: null,
+      rsi: 50, beta: 1, shortFloatPct: null, daysToCover: null, institutionalOwnership: 0,
+      insiderActivity: "neutral", insiderNet: 0, dividendYield: null, freeCashFlow: null,
       description: "", chartSeed: 0, chartTrend: 0,
     } as AssetData);
-    onAssetSelect(placeholder);
+
     setQuery(symbol);
     setFocused(false);
     clearTimeout(blurTimer.current);
-    fetchAsset(key).then(data => { if (data) onAssetSelect(data); });
+
+    if (user) {
+      // Logged-in: fire to LoggedInHero's floating tile system, don't render our own overlay
+      window.dispatchEvent(new CustomEvent("selectAsset", { detail: asset }));
+      fetchAsset(key).then(data => {
+        if (data) window.dispatchEvent(new CustomEvent("selectAsset", { detail: data }));
+      });
+    } else {
+      // Logged-out: show the inline panel below the search bar as before
+      setSelectedAsset(asset);
+      fetchAsset(key).then(data => { if (data) setSelectedAsset(data); });
+    }
+  };
+
+  const handleClose = () => {
+    setSelectedAsset(null);
+    setQuery("");
   };
 
   const showDropdown = focused && !selectedAsset && (results.length > 0 || query === "");
@@ -117,6 +115,7 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
 
   return (
     <>
+      {/* Vignette overlay */}
       <div style={{
         position: "fixed", top: 0, left: 0, right: 0, height: 320,
         zIndex: 99, pointerEvents: "none",
@@ -128,6 +127,20 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
           "linear-gradient(to bottom, rgba(4,6,12,0.30) 0%, transparent 38%)",
         ].join(", "),
       }} />
+
+      {/* Logged-out search result — inline panel under search bar */}
+      {selectedAsset && !user && (
+        <div style={{
+          position: "fixed", top: 72, left: "50%", transform: "translateX(-50%)",
+          zIndex: 300,
+        }}>
+          <SearchPanel
+            asset={selectedAsset}
+            onClose={handleClose}
+            navbarRef={navbarRef}
+          />
+        </div>
+      )}
 
       <nav
         ref={navbarRef}
@@ -152,19 +165,32 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
         <div style={{ flex: 1, maxWidth: 460, margin: "0 auto", position: "relative" }}>
           <span style={{
             position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)",
-            color: "rgba(0,180,255,0.45)", fontSize: 14, pointerEvents: "none", zIndex: 1,
+            color: "rgba(0,180,255,0.45)", fontSize: 14, pointerEvents: "none",
+            zIndex: 1,
           }}>⌕</span>
 
           <input
             value={query}
-            onChange={e => { setQuery(e.target.value); onAssetSelect(null); }}
+            onChange={e => {
+              setQuery(e.target.value);
+              setSelectedAsset(null);
+            }}
             onFocus={() => setFocused(true)}
             onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 160); }}
             placeholder={`Search — try "${SEARCH_SUGGESTIONS[suggIdx]}"`}
             style={{
-              color: "rgba(200,225,255,0.55)", fontFamily: sans,
-              fontSize: 13, cursor: "pointer", letterSpacing: "0.02em",
-              transition: "color 0.2s",
+              width: "100%", height: 37,
+              paddingLeft: 36, paddingRight: 14,
+              background: "rgba(255,255,255,0.05)",
+              border: focused || selectedAsset
+                ? "1px solid rgba(0,180,255,0.50)"
+                : "1px solid rgba(0,180,255,0.18)",
+              boxShadow: focused || selectedAsset
+                ? "0 0 0 3px rgba(0,180,255,0.08)"
+                : "none",
+              borderRadius: 10, color: "#e0f0ff",
+              fontSize: 13, fontFamily: sans,
+              outline: "none", transition: "border-color 0.2s, box-shadow 0.2s",
             }}
           />
 
@@ -178,30 +204,58 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
               borderRadius: 12, overflow: "hidden",
               boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
               zIndex: 200,
-              animation: "fadeDown 0.14s ease both",
             }}>
-              {user.name 
-                ? `Hi, ${user.name.trim().split(" ")[0].charAt(0).toUpperCase() + user.name.trim().split(" ")[0].slice(1).toLowerCase()}!` 
-                : user.email
-              }
-            </span>
-            <button
-              onClick={async () => { await logout(); navigate("/"); }}
-              style={{
-                padding: "7px 18px", borderRadius: 8,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "rgba(200,225,255,0.55)", fontSize: 13, fontFamily: sans,
-                cursor: "pointer", transition: "background 0.2s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
-            >
-              Sign Out
-            </button>
-          </>
-        ) : (
-          <>
+              <div style={{ padding: "8px 0" }}>
+                <div style={{
+                  padding: "4px 14px 8px",
+                  fontFamily: mono, fontSize: 9,
+                  color: "rgba(0,180,255,0.4)", letterSpacing: "0.12em",
+                }}>
+                  {query ? "RESULTS" : "POPULAR"}
+                </div>
+                {dropdownItems.map(item => {
+                  const badge = TYPE_BADGE[item.type] ?? TYPE_BADGE.stock;
+                  return (
+                    <button
+                      key={item.symbol}
+                      onMouseDown={() => handleSelect(item.symbol)}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center",
+                        gap: 10, padding: "9px 14px",
+                        background: "transparent", border: "none", cursor: "pointer",
+                        transition: "background 0.12s",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,180,255,0.07)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <span style={{ fontFamily: mono, fontSize: 12, color: "#00d4ff", fontWeight: 500, minWidth: 46, textAlign: "left" }}>
+                        {item.symbol}
+                      </span>
+                      <span style={{ fontFamily: sans, fontSize: 12, color: "rgba(180,210,255,0.45)", flex: 1, textAlign: "left" }}>
+                        {item.name}
+                      </span>
+                      <span style={{
+                        fontFamily: mono, fontSize: 9, letterSpacing: "0.06em",
+                        color: badge.color, padding: "1px 5px",
+                        border: `1px solid ${badge.color.replace(/[\d.]+\)$/, "0.25)")}`,
+                        borderRadius: 3,
+                      }}>
+                        {badge.label}
+                      </span>
+                      <span style={{ fontFamily: mono, fontSize: 10, color: "rgba(180,210,255,0.25)" }}>
+                        {item.exchange}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right nav */}
+        <div style={{ display: "flex", gap: 22, alignItems: "center", flexShrink: 0 }}>
+          {["Markets", "Strategies"].map(l => (
             <span
               key={l}
               style={{
@@ -218,8 +272,14 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
 
           {user ? (
             <>
-              <span style={{ color: "rgba(200,225,255,0.75)", fontFamily: sans, fontSize: 13, letterSpacing: "0.02em" }}>
-                {user.name || user.email}
+              <span style={{
+                color: "rgba(200,225,255,0.75)", fontFamily: sans,
+                fontSize: 13, letterSpacing: "0.02em",
+              }}>
+                {user.name
+                  ? `Hi, ${user.name.trim().split(" ")[0].charAt(0).toUpperCase() + user.name.trim().split(" ")[0].slice(1).toLowerCase()}!`
+                  : user.email
+                }
               </span>
               <button
                 onClick={async () => { await logout(); navigate("/"); }}
@@ -240,7 +300,10 @@ export function Navbar({ selectedAsset, onAssetSelect }: NavbarProps) {
             <>
               <span
                 onClick={() => navigate("/login")}
-                style={{ color: "rgba(200,225,255,0.55)", fontFamily: sans, fontSize: 13, cursor: "pointer", transition: "color 0.2s" }}
+                style={{
+                  color: "rgba(200,225,255,0.55)", fontFamily: sans,
+                  fontSize: 13, cursor: "pointer", transition: "color 0.2s",
+                }}
                 onMouseEnter={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.9)")}
                 onMouseLeave={e => ((e.currentTarget as HTMLSpanElement).style.color = "rgba(200,225,255,0.55)")}
               >

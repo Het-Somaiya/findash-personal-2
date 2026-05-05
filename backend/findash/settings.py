@@ -4,6 +4,7 @@ Django settings for findash project.
 
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -14,8 +15,8 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me-in-produc
 
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-
+_default_hosts = 'localhost,127.0.0.1,.github.dev,.app.github.dev,.preview.app.github.dev'
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', _default_hosts).split(',') if h.strip()]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -29,12 +30,13 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     # Local
-    'core',
+    'core.apps.CoreConfig',
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -45,10 +47,12 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'findash.urls'
 
+FRONTEND_DIST_DIR = BASE_DIR / 'frontend_dist'
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [FRONTEND_DIST_DIR],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -62,19 +66,32 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'findash.wsgi.application'
 
-
 # Database — Azure SQL primary, SQLite fallback when credentials are absent
 _db_host = os.getenv('DB_HOST', '')
 _db_user = os.getenv('DB_USER', '')
 _db_password = os.getenv('DB_PASSWORD', '')
+_db_name = os.getenv('DB_NAME') or 'findash-sql-db'
+_db_port = os.getenv('DB_PORT') or '1433'
 
-if _db_host and _db_user and _db_password:
+# Route the test runner to a local SQLite DB regardless of .env contents:
+# Azure SQL test-DB provisioning is slow and leaves orphan schemas behind on
+# crashed runs. Real dev/prod still use the .env credentials below.
+_running_tests = 'test' in sys.argv
+
+if _running_tests:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+elif _db_host and _db_user and _db_password:
     DATABASES = {
         'default': {
             'ENGINE': 'mssql',
-            'NAME': os.getenv('DB_NAME', 'findash-sql-db'),
+            'NAME': _db_name,
             'HOST': _db_host,
-            'PORT': os.getenv('DB_PORT', '1433'),
+            'PORT': _db_port,
             'USER': _db_user,
             'PASSWORD': _db_password,
             'OPTIONS': {
@@ -90,7 +107,6 @@ else:
         }
     }
 
-
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
@@ -104,29 +120,6 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Simple JWT
-from datetime import timedelta  # noqa: E402
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'JTI_CLAIM': 'jti',
-}
-
-# Auth cookie (httpOnly refresh token)
-AUTH_COOKIE_NAME = 'findash_refresh'
-AUTH_COOKIE_SECURE = not DEBUG
-AUTH_COOKIE_HTTPONLY = True
-AUTH_COOKIE_SAMESITE = 'Lax'
-AUTH_COOKIE_PATH = '/api/auth/'
-AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
-
-
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -138,13 +131,17 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
-
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [FRONTEND_DIST_DIR] if FRONTEND_DIST_DIR.exists() else []
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'core.User'
-
 AUTHENTICATION_BACKENDS = ['core.auth_backend.EmailBackend']
 
 # CORS — allow the Vite dev server
@@ -154,14 +151,40 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-# Finnhub
-FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
+# Secure Proxy Setting
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Azure OpenAI
+# Cookie Settings
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = False
+
+# Auth cookie settings
+AUTH_COOKIE_NAME = 'findash_refresh'
+AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
+AUTH_COOKIE_SECURE = False
+AUTH_COOKIE_HTTPONLY = True
+AUTH_COOKIE_SAMESITE = 'Lax'
+AUTH_COOKIE_PATH = '/api/auth/'
+
+# Finnhub & OpenAI
+FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
 AZURE_OPENAI_API_KEY = os.getenv('AZURE_OPENAI_API_KEY', '')
 AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT', '')
 AZURE_OPENAI_DEPLOYMENT = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o-mini')
 AZURE_OPENAI_API_VERSION = os.getenv('AZURE_OPENAI_API_VERSION', '2025-01-01-preview')
+
+# Filing GraphRAG backing stores. The filing-intel-engine pipeline owns data
+# creation; this app only connects to migrated/snapshotted stores.
+FILING_GRAPH_ENABLED = os.getenv('FILING_GRAPH_ENABLED', 'False') == 'True'
+NEO4J_URI = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
+NEO4J_USER = os.getenv('NEO4J_USER', 'neo4j')
+NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD', '')
+QDRANT_HOST = os.getenv('QDRANT_HOST', 'localhost')
+QDRANT_PORT = int(os.getenv('QDRANT_PORT', '6333'))
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'findash')
 
 LOGGING = {
     'version': 1,

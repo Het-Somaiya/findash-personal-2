@@ -1,9 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { useAuth } from "../lib/AuthContext";
 
 interface Message {
   role: "bot" | "user";
   text: string;
+  citations?: Citation[];
+}
+
+interface Citation {
+  id: string;
+  ticker?: string;
+  period?: string;
+  section?: string;
+  conceptId?: string;
+  framing?: string;
+  evidence?: string;
+  sourceUrl?: string;
 }
 
 const INITIAL: Message[] = [
@@ -20,18 +33,30 @@ const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "";
 async function getReply(
   question: string,
   history: { role: "user" | "assistant"; content: string }[],
-): Promise<string> {
+  accessToken: string | null,
+): Promise<{ reply: string; citations: Citation[] }> {
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
     const res = await fetch(`${API_BASE}/api/chat/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ message: question, history }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return data.reply ?? "Sorry, I couldn't generate a response.";
+    return {
+      reply: data.reply ?? "Sorry, I couldn't generate a response.",
+      citations: Array.isArray(data.citations) ? data.citations : [],
+    };
   } catch {
-    return "I'm having trouble connecting to the server. Please try again in a moment.";
+    return {
+      reply: "I'm having trouble connecting to the server. Please try again in a moment.",
+      citations: [],
+    };
   }
 }
 
@@ -39,11 +64,13 @@ const sans = "'DM Sans', sans-serif";
 const mono = "'JetBrains Mono', monospace";
 
 export function Chatbot() {
+  const { accessToken } = useAuth();
   const [open,     setOpen]     = useState(false);
   const [messages, setMessages] = useState<Message[]>(INITIAL);
   const [input,    setInput]    = useState("");
   const [loading,  setLoading]  = useState(false);
   const [pulse,    setPulse]    = useState(true);
+  const [openCitation, setOpenCitation] = useState<string | null>(null);
   const bottomRef              = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,8 +98,8 @@ export function Chatbot() {
         content: m.text,
       }));
 
-    const reply = await getReply(text, history);
-    setMessages(m => [...m, { role: "bot", text: reply }]);
+    const { reply, citations } = await getReply(text, history, accessToken);
+    setMessages(m => [...m, { role: "bot", text: reply, citations }]);
     setLoading(false);
   };
 
@@ -116,7 +143,7 @@ export function Chatbot() {
               marginLeft: "auto", fontFamily: mono, fontSize: 10,
               color: "rgba(255,255,255,0.28)", letterSpacing: "0.06em",
             }}>
-              FREE TIER
+              {accessToken ? "FILING GRAPH" : "FREE TIER"}
             </span>
           </div>
 
@@ -144,7 +171,13 @@ export function Chatbot() {
                 }}>
                   {m.role === "bot" ? (
                     <div className="chatbot-md">
-                      <ReactMarkdown>{m.text}</ReactMarkdown>
+                      <CitationMarkdown
+                        messageIndex={i}
+                        text={m.text}
+                        citations={m.citations ?? []}
+                        openCitation={openCitation}
+                        setOpenCitation={setOpenCitation}
+                      />
                     </div>
                   ) : (
                     m.text
@@ -280,6 +313,174 @@ export function Chatbot() {
           {open ? "×" : "✦"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function CitationMarkdown({
+  messageIndex,
+  text,
+  citations,
+  openCitation,
+  setOpenCitation,
+}: {
+  messageIndex: number;
+  text: string;
+  citations: Citation[];
+  openCitation: string | null;
+  setOpenCitation: (key: string | null) => void;
+}) {
+  const citationById = new Map(citations.map(c => [c.id, c]));
+  const markdown = text.replace(/\[CITATION_(\d+)\]/g, (_match, n: string) => {
+    const id = `CITATION_${n}`;
+    return citationById.has(id) ? `[[${n}]](citation:${id})` : "";
+  });
+  const activeKey = openCitation?.startsWith(`${messageIndex}:`) ? openCitation : null;
+  const activeId = activeKey?.split(":")[1];
+  const activeCitation = activeId ? citationById.get(activeId) : undefined;
+
+  return (
+    <>
+      <ReactMarkdown
+        urlTransform={chatbotUrlTransform}
+        components={{
+          a: ({ href, children }) => {
+            if (href?.startsWith("citation:")) {
+              const id = href.slice("citation:".length);
+              const key = `${messageIndex}:${id}`;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setOpenCitation(openCitation === key ? null : key)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 18,
+                    height: 18,
+                    margin: "0 2px",
+                    padding: "0 5px",
+                    borderRadius: 5,
+                    border: "1px solid rgba(0,180,255,0.34)",
+                    background: openCitation === key ? "rgba(0,180,255,0.24)" : "rgba(0,180,255,0.12)",
+                    color: "#00d4ff",
+                    cursor: "pointer",
+                    fontFamily: mono,
+                    fontSize: 10,
+                    lineHeight: 1,
+                    verticalAlign: "baseline",
+                  }}
+                >
+                  {children}
+                </button>
+              );
+            }
+            return (
+              <a href={href} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
+        {markdown}
+      </ReactMarkdown>
+
+      {activeCitation && (
+        <CitationCard citation={activeCitation} />
+      )}
+    </>
+  );
+}
+
+function chatbotUrlTransform(url: string) {
+  if (
+    url.startsWith("citation:") ||
+    url.startsWith("https://") ||
+    url.startsWith("http://") ||
+    url.startsWith("mailto:")
+  ) {
+    return url;
+  }
+  return "";
+}
+
+function CitationCard({ citation }: { citation: Citation }) {
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: "10px 11px",
+        borderRadius: 8,
+        border: "1px solid rgba(0,180,255,0.20)",
+        background: "rgba(0,12,24,0.64)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+      }}
+    >
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 7,
+        fontFamily: mono,
+        fontSize: 10,
+        color: "rgba(224,240,255,0.82)",
+      }}>
+        <span style={{ color: "#00d4ff", fontWeight: 700 }}>{citation.id}</span>
+        <span>{citation.ticker || "N/A"}</span>
+        <span style={{ color: "rgba(224,240,255,0.36)" }}>·</span>
+        <span>{citation.period || "N/A"}</span>
+      </div>
+
+      <CitationLine label="Section" value={citation.section} />
+      <CitationLine label="Concept" value={citation.conceptId} />
+      <CitationLine label="Framing" value={citation.framing} />
+      <CitationLine label="Evidence" value={citation.evidence} />
+
+      {citation.sourceUrl && (
+        <a
+          href={citation.sourceUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-block",
+            marginTop: 7,
+            color: "#00d4ff",
+            fontFamily: mono,
+            fontSize: 10,
+            textDecoration: "none",
+          }}
+        >
+          Open SEC source
+        </a>
+      )}
+    </div>
+  );
+}
+
+function CitationLine({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div style={{ marginTop: 5 }}>
+      <span style={{
+        display: "block",
+        marginBottom: 2,
+        fontFamily: mono,
+        fontSize: 9,
+        color: "rgba(0,212,255,0.56)",
+        textTransform: "uppercase",
+      }}>
+        {label}
+      </span>
+      <span style={{
+        display: "block",
+        fontFamily: sans,
+        fontSize: 11.5,
+        lineHeight: 1.45,
+        color: "rgba(224,240,255,0.82)",
+      }}>
+        {value}
+      </span>
     </div>
   );
 }
