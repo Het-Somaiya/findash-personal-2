@@ -162,7 +162,7 @@ export function Navbar() {
         </div>
 
         {/* Search */}
-        <div style={{ flex: 1, maxWidth: 460, margin: "0 auto", position: "relative" }}>
+        <div style={{ flex: 1, maxWidth: 640, margin: "0 auto", position: "relative" }}>
           <span style={{
             position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)",
             color: "rgba(0,180,255,0.45)", fontSize: 14, pointerEvents: "none",

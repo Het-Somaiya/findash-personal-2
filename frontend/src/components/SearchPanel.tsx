@@ -542,9 +542,10 @@ export interface SearchPanelProps {
   onClose: () => void;
   navbarRef: RefObject<HTMLElement | null>;
   inline?: boolean;
+  headerSlot?: React.ReactNode;
 }
 
-export function SearchPanel({ asset, onClose, navbarRef, inline = false }: SearchPanelProps) {
+export function SearchPanel({ asset, onClose, navbarRef, inline = false, headerSlot }: SearchPanelProps) {
   const [range, setRange] = useState<ChartRange>("5D");
   const [chartData, setChartData] = useState<ChartPoint[]>(() => genChart(asset, "5D"));
   const panelRef = useRef<HTMLDivElement>(null);

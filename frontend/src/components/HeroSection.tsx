@@ -68,7 +68,6 @@ function DashboardCard({
   const up = asset.changePct >= 0;
   const color = up ? "#00d282" : "#ff5064";
 
-  // ✅ FIX 3: Don't add a sign prefix — toFixed already includes "-" for negatives
   const changePctDisplay = `${asset.changePct >= 0 ? "+" : ""}${asset.changePct.toFixed(2)}%`;
 
   useEffect(() => {
@@ -117,28 +116,35 @@ function DashboardCard({
       }}
       onClick={onOpen}
     >
-      <div style={{ position: "absolute", top: 10, left: 10, color: "rgba(180,210,255,0.20)", fontSize: 11, cursor: "grab", lineHeight: 1, letterSpacing: 1 }}
-        onClick={e => e.stopPropagation()}>⠿</div>
-      <button onClick={e => { e.stopPropagation(); onRemove(); }}
+      <div
+        style={{ position: "absolute", top: 10, left: 10, color: "rgba(180,210,255,0.20)", fontSize: 11, cursor: "grab", lineHeight: 1, letterSpacing: 1 }}
+        onClick={e => e.stopPropagation()}
+      >⠿</div>
+      <button
+        onClick={e => { e.stopPropagation(); onRemove(); }}
         style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", color: "rgba(180,210,255,0.25)", fontSize: 12, cursor: "pointer", padding: "2px 5px", borderRadius: 4, transition: "color 0.15s", zIndex: 2 }}
         onMouseEnter={e => (e.currentTarget.style.color = "#ff5064")}
-        onMouseLeave={e => (e.currentTarget.style.color = "rgba(180,210,255,0.25)")}>✕</button>
+        onMouseLeave={e => (e.currentTarget.style.color = "rgba(180,210,255,0.25)")}
+      >✕</button>
 
       <div style={{ padding: "10px 14px 0 22px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
           <span style={{ fontFamily: mono, fontSize: 13, color: "#e8f4ff", fontWeight: 700, letterSpacing: "0.02em" }}>{asset.ticker}</span>
           <span style={{ fontFamily: mono, fontSize: 8, color: "rgba(180,210,255,0.55)", background: "rgba(180,210,255,0.08)", border: "1px solid rgba(180,210,255,0.15)", borderRadius: 3, padding: "1px 5px", letterSpacing: "0.06em" }}>
-            {asset.type?.toUpperCase() ?? "STOCK"}</span>
-          {/* ✅ FIX 3 applied here */}
+            {asset.type?.toUpperCase() ?? "STOCK"}
+          </span>
           <span style={{ marginLeft: "auto", marginRight: 18, fontFamily: mono, fontSize: 11, color, fontWeight: 600 }}>{changePctDisplay}</span>
         </div>
         <div style={{ fontFamily: sans, fontSize: 10, color: "rgba(180,210,255,0.40)", marginBottom: 6, paddingRight: 20 }}>
-          {asset.name}{asset.sector && asset.sector !== "—" ? ` · ${asset.sector}` : ""}</div>
+          {asset.name}{asset.sector && asset.sector !== "—" ? ` · ${asset.sector}` : ""}
+        </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
           <span style={{ fontFamily: mono, fontSize: 20, color: "#e8f4ff", fontWeight: 600, letterSpacing: "-0.01em" }}>
-            {asset.price > 0 ? `$${asset.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</span>
+            {asset.price > 0 ? `$${asset.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+          </span>
           <span style={{ fontFamily: mono, fontSize: 11, color }}>
-            {asset.change !== 0 ? `${asset.change > 0 ? "▲" : "▼"} $${Math.abs(asset.change).toFixed(2)}` : ""}</span>
+            {asset.change !== 0 ? `${asset.change > 0 ? "▲" : "▼"} $${Math.abs(asset.change).toFixed(2)}` : ""}
+          </span>
         </div>
       </div>
 
@@ -201,7 +207,8 @@ function DashboardCard({
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: mono, fontSize: 7, color: "rgba(180,210,255,0.30)", letterSpacing: "0.06em", marginBottom: 2 }}>REV GROWTH</div>
             <div style={{ fontFamily: mono, fontSize: 10, fontWeight: 600, color: asset.revenueGrowth != null ? (asset.revenueGrowth > 0 ? "#00d282" : "#ff5064") : "rgba(180,210,255,0.45)" }}>
-              {asset.revenueGrowth != null ? `${asset.revenueGrowth > 0 ? "+" : ""}${(asset.revenueGrowth * 100).toFixed(1)}%` : "N/A"}</div>
+              {asset.revenueGrowth != null ? `${asset.revenueGrowth > 0 ? "+" : ""}${(asset.revenueGrowth * 100).toFixed(1)}%` : "N/A"}
+            </div>
           </div>
           <div style={{ flex: 2 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
@@ -229,9 +236,6 @@ function LoggedInHero() {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
-
-  // Tracks which ticker was JUST added so the button flips to "✓ ADDED"
-  // instantly on click, independent of all state timing / re-render issues
   const [addedTicker, setAddedTicker] = useState<string | null>(null);
 
   const dashboardVisible = dashboardOpen && dashboardStocks.length > 0;
@@ -241,8 +245,6 @@ function LoggedInHero() {
     return () => clearTimeout(timer);
   }, [dashboardVisible]);
 
-  // Hydrate persisted watchlist on login: fetch symbols, then full asset data per symbol.
-  // Leaves the panel collapsed to the "OPEN DASHBOARD" pill — user clicks to expand.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -262,20 +264,15 @@ function LoggedInHero() {
   }, [user]);
 
   const handleAddToDashboard = useCallback((asset: AssetData) => {
-    // 1. Instantly flip the button UI
     setAddedTicker(asset.ticker);
-    // 2. Add to list (optimistic)
     setDashboardStocks(prev => {
       if (prev.find(s => s.ticker === asset.ticker)) return prev;
       return [...prev, asset];
     });
-    // 3. Persist to server (fire-and-forget; idempotent on backend)
-    addWatchlistSymbol(asset.ticker).catch(() => { /* ignore; UI already updated */ });
-    // 4. Open panel after short delay so globe resize doesn't interfere
+    addWatchlistSymbol(asset.ticker).catch(() => {});
     setTimeout(() => setDashboardOpen(true), 50);
   }, []);
 
-  // Reset addedTicker when a different bubble is opened
   useEffect(() => {
     setAddedTicker(null);
   }, [floatingAsset?.ticker]);
@@ -289,8 +286,6 @@ function LoggedInHero() {
     return () => window.removeEventListener("addToDashboard", handler);
   }, [handleAddToDashboard]);
 
-  // Fired by Navbar when a logged-in user selects a ticker from search —
-  // opens the floating tile without auto-adding to watchlist
   useEffect(() => {
     const handler = (e: Event) => {
       const asset = (e as CustomEvent<AssetData>).detail;
@@ -306,10 +301,9 @@ function LoggedInHero() {
       if (next.length === 0) setDashboardOpen(false);
       return next;
     });
-    removeWatchlistSymbol(ticker).catch(() => { /* ignore; UI already updated */ });
+    removeWatchlistSymbol(ticker).catch(() => {});
   }, []);
 
-  // Show green badge if just clicked OR already in dashboard list
   const isInDashboard = floatingAsset != null && (
     addedTicker === floatingAsset.ticker ||
     dashboardStocks.some(s => s.ticker === floatingAsset.ticker)
@@ -321,7 +315,7 @@ function LoggedInHero() {
         const next = [...prev];
         const [moved] = next.splice(dragIdx, 1);
         next.splice(dragOverIdx, 0, moved);
-        reorderWatchlist(next.map(s => s.ticker)).catch(() => { /* ignore */ });
+        reorderWatchlist(next.map(s => s.ticker)).catch(() => {});
         return next;
       });
     }
@@ -329,7 +323,6 @@ function LoggedInHero() {
     setDragOverIdx(null);
   }, [dragIdx, dragOverIdx]);
 
-  // Memoize the globe so it NEVER remounts when dashboardVisible changes
   const globeMemo = useMemo(() => (
     <LandingMarketGlobe onTickerClick={setFloatingAsset} />
   ), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -344,7 +337,7 @@ function LoggedInHero() {
         .dash-scroll::-webkit-scrollbar-thumb { background: rgba(0,180,255,0.18); border-radius: 2px; }
       `}</style>
 
-      {/* Globe — width transitions but globe itself never remounts */}
+      {/* Globe */}
       <div style={{
         position: "absolute", top: 0, left: 0,
         width: dashboardVisible ? "65%" : "100%",
@@ -358,14 +351,23 @@ function LoggedInHero() {
 
       {/* Right panel background */}
       {dashboardVisible && (
-        <div style={{ position: "absolute", top: 0, right: 0, width: "35%", height: "100%", zIndex: 2, background: `linear-gradient(to bottom, #042e38 0%, #03212a 15%, #021820 30%, #021218 45%, #060e14 60%, #050a10 75%, #04080c 88%, #030609 100%)`, pointerEvents: "none", animation: "panelSlideIn 0.45s cubic-bezier(0.16,1,0.3,1) both" }}>
+        <div style={{
+          position: "absolute", top: 0, right: 0, width: "35%", height: "100%", zIndex: 2,
+          background: `linear-gradient(to bottom, #042e38 0%, #03212a 15%, #021820 30%, #021218 45%, #060e14 60%, #050a10 75%, #04080c 88%, #030609 100%)`,
+          pointerEvents: "none",
+          animation: "panelSlideIn 0.45s cubic-bezier(0.16,1,0.3,1) both",
+        }}>
           <div style={{ position: "absolute", top: 0, left: 0, width: 60, height: "100%", background: `linear-gradient(to right, ${GLOBE_BG}, transparent)`, zIndex: 3, pointerEvents: "none" }} />
         </div>
       )}
 
       {/* Dashboard Panel */}
       {dashboardVisible && (
-        <div style={{ position: "absolute", top: 72, right: 0, width: "35%", height: "calc(100vh - 72px)", zIndex: 110, display: "flex", flexDirection: "column", animation: "panelSlideIn 0.45s cubic-bezier(0.16,1,0.3,1) both" }}>
+        <div style={{
+          position: "absolute", top: 72, right: 0, width: "35%", height: "calc(100vh - 72px)",
+          zIndex: 110, display: "flex", flexDirection: "column",
+          animation: "panelSlideIn 0.45s cubic-bezier(0.16,1,0.3,1) both",
+        }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 10px", borderBottom: "1px solid rgba(0,180,255,0.08)", flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontFamily: mono, fontSize: 10, color: "#00d4ff", letterSpacing: "0.12em", fontWeight: 600 }}>MY DASHBOARD</span>
@@ -373,10 +375,12 @@ function LoggedInHero() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#00d4ff", boxShadow: "0 0 5px #00d4ff" }} />
-              <button onClick={() => setDashboardOpen(false)}
+              <button
+                onClick={() => setDashboardOpen(false)}
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 5, color: "rgba(180,210,255,0.50)", fontFamily: mono, fontSize: 9, padding: "3px 10px", cursor: "pointer", letterSpacing: "0.06em", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,80,100,0.10)"; e.currentTarget.style.color = "#ff5064"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(180,210,255,0.50)"; }}>
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(180,210,255,0.50)"; }}
+              >
                 CLOSE
                 <span style={{ background: "rgba(180,210,255,0.12)", borderRadius: 3, padding: "0 5px", fontFamily: mono, fontSize: 9, color: "rgba(180,210,255,0.60)" }}>{dashboardStocks.length}</span>
               </button>
@@ -387,7 +391,9 @@ function LoggedInHero() {
           </div>
           <div className="dash-scroll" style={{ overflowY: "auto", padding: "6px 12px 16px", display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
             {dashboardStocks.map((stock, i) => (
-              <DashboardCard key={stock.ticker} asset={stock}
+              <DashboardCard
+                key={stock.ticker}
+                asset={stock}
                 onRemove={() => handleRemoveFromDashboard(stock.ticker)}
                 onOpen={() => setFloatingAsset(stock)}
                 isDragging={dragIdx === i}
@@ -402,25 +408,26 @@ function LoggedInHero() {
 
       {/* Open Dashboard button */}
       {!dashboardOpen && dashboardStocks.length > 0 && (
-        <button onClick={() => setDashboardOpen(true)}
+        <button
+          onClick={() => setDashboardOpen(true)}
           style={{ position: "absolute", top: 88, right: 20, zIndex: 110, background: "rgba(5,7,14,0.90)", border: "1px solid rgba(0,180,255,0.30)", borderRadius: 8, color: "#00d4ff", fontFamily: mono, fontSize: 10, padding: "7px 14px", cursor: "pointer", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 7, backdropFilter: "blur(10px)", transition: "all 0.15s" }}
           onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.55)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(5,7,14,0.90)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.30)"; }}>
+          onMouseLeave={e => { e.currentTarget.style.background = "rgba(5,7,14,0.90)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.30)"; }}
+        >
           <span style={{ background: "rgba(0,180,255,0.18)", borderRadius: 3, padding: "0px 5px", fontSize: 9 }}>{dashboardStocks.length}</span>
           OPEN DASHBOARD
         </button>
       )}
 
-      {/* Floating tile */}
+      {/* Floating tile — signed-in popup */}
       {floatingAsset && (
         <div style={{ position: "absolute", inset: 0, zIndex: 110 }}>
-          {/* Backdrop — click outside tile to close.
-              Uses onMouseDown + target check so button clicks inside the tile
-              never bubble up and accidentally close it. */}
+          {/* Backdrop */}
           <div
             style={{ position: "absolute", inset: 0, background: "transparent", cursor: "default" }}
             onMouseDown={(e) => { if (e.target === e.currentTarget) setFloatingAsset(null); }}
           />
+
           {/* Centering wrapper */}
           <div style={{
             position: "absolute", inset: 0,
@@ -430,43 +437,51 @@ function LoggedInHero() {
             <div
               onClick={e => e.stopPropagation()}
               style={{
-                width: "min(460px, 88vw)",
+                width: "min(640px, 92vw)",
                 maxHeight: "calc(100vh - 80px)",
-                display: "flex", flexDirection: "column", gap: 8,
+                display: "flex", flexDirection: "column",
                 pointerEvents: "auto",
                 animation: "floatIn 0.35s cubic-bezier(0.16,1,0.3,1) both",
                 marginRight: dashboardVisible ? "35%" : 0,
               }}
             >
-              {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                {isInDashboard ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 10, color: "#00d282", background: "rgba(0,210,130,0.10)", border: "1px solid rgba(0,210,130,0.25)", borderRadius: 6, padding: "5px 12px" }}>
-                    <span>✓</span><span>IN DASHBOARD</span>
-                  </div>
-                ) : (
-                  <button
-                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToDashboard(floatingAsset); }}
-                    style={{ background: "rgba(0,180,255,0.12)", border: "1px solid rgba(0,180,255,0.35)", borderRadius: 6, color: "#00d4ff", fontFamily: mono, fontSize: 10, padding: "5px 14px", cursor: "pointer", letterSpacing: "0.06em", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.22)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.60)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.35)"; }}
-                  >
-                    <span style={{ fontSize: 13 }}>+</span>
-                    <span>ADD TO DASHBOARD</span>
-                  </button>
-                )}
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFloatingAsset(null); }}
-                  style={{ background: "rgba(10,12,20,0.75)", border: "1px solid rgba(0,180,255,0.20)", borderRadius: 7, color: "rgba(180,210,255,0.55)", fontFamily: mono, fontSize: 11, padding: "5px 14px", cursor: "pointer", backdropFilter: "blur(10px)", transition: "all 0.15s", letterSpacing: "0.05em" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.color = "#00d4ff"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.40)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "rgba(10,12,20,0.75)"; e.currentTarget.style.color = "rgba(180,210,255,0.55)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.20)"; }}
-                >
-                  ✕ close
-                </button>
-              </div>
-
-              <div className="dash-scroll" style={{ overflowY: "auto", borderRadius: 20, maxHeight: "calc(100vh - 160px)" }}>
-                <SearchPanel asset={floatingAsset} onClose={() => setFloatingAsset(null)} navbarRef={navbarRef} inline={true} />
+              <div className="dash-scroll" style={{ overflowY: "auto", borderRadius: 20, maxHeight: "calc(100vh - 120px)" }}>
+                <SearchPanel
+                  asset={floatingAsset}
+                  onClose={() => setFloatingAsset(null)}
+                  navbarRef={navbarRef}
+                  inline={true}
+                  headerSlot={
+                    <div style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "10px 18px 0",
+                    }}>
+                      {isInDashboard ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 10, color: "#00d282", background: "rgba(0,210,130,0.10)", border: "1px solid rgba(0,210,130,0.25)", borderRadius: 6, padding: "5px 12px" }}>
+                          <span>✓</span><span>IN DASHBOARD</span>
+                        </div>
+                      ) : (
+                        <button
+                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToDashboard(floatingAsset); }}
+                          style={{ background: "rgba(0,180,255,0.12)", border: "1px solid rgba(0,180,255,0.35)", borderRadius: 6, color: "#00d4ff", fontFamily: mono, fontSize: 10, padding: "5px 14px", cursor: "pointer", letterSpacing: "0.06em", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.22)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.60)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.35)"; }}
+                        >
+                          <span style={{ fontSize: 13 }}>+</span>
+                          <span>ADD TO DASHBOARD</span>
+                        </button>
+                      )}
+                      <button
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFloatingAsset(null); }}
+                        style={{ background: "rgba(10,12,20,0.75)", border: "1px solid rgba(0,180,255,0.20)", borderRadius: 7, color: "rgba(180,210,255,0.55)", fontFamily: mono, fontSize: 11, padding: "5px 14px", cursor: "pointer", backdropFilter: "blur(10px)", transition: "all 0.15s", letterSpacing: "0.05em" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.color = "#00d4ff"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.40)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(10,12,20,0.75)"; e.currentTarget.style.color = "rgba(180,210,255,0.55)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.20)"; }}
+                      >
+                        ✕ close
+                      </button>
+                    </div>
+                  }
+                />
               </div>
             </div>
           </div>
@@ -515,12 +530,18 @@ function LoggedOutHero({ onExploreClick }: { onExploreClick?: () => void }) {
             Institutional-grade options analytics, AI filing intelligence, and strategy simulation — from the first search to the last trade.
           </p>
           <div className="anim-3" style={{ display: "flex", gap: 12, justifyContent: "center", pointerEvents: "auto" }}>
-            <button onClick={onExploreClick} style={{ padding: "12px 28px", borderRadius: 10, background: "rgba(0,180,255,0.18)", border: "1px solid rgba(0,180,255,0.40)", color: "#00d4ff", fontFamily: sans, fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "background 0.2s" }}
+            <button
+              onClick={onExploreClick}
+              style={{ padding: "12px 28px", borderRadius: 10, background: "rgba(0,180,255,0.18)", border: "1px solid rgba(0,180,255,0.40)", color: "#00d4ff", fontFamily: sans, fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "background 0.2s" }}
               onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,180,255,0.30)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,180,255,0.18)")}>Explore free ↓</button>
-            <button onClick={() => navigate("/register")} style={{ padding: "12px 28px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(200,225,255,0.70)", fontFamily: sans, fontSize: 14, cursor: "pointer", transition: "background 0.2s" }}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,180,255,0.18)")}
+            >Explore free ↓</button>
+            <button
+              onClick={() => navigate("/register")}
+              style={{ padding: "12px 28px", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(200,225,255,0.70)", fontFamily: sans, fontSize: 14, cursor: "pointer", transition: "background 0.2s" }}
               onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.10)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}>See what's locked</button>
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+            >See what's locked</button>
           </div>
         </div>
       </div>
