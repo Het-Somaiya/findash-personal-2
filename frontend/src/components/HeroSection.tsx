@@ -446,41 +446,14 @@ function LoggedInHero() {
               }}
             >
               <div className="dash-scroll" style={{ overflowY: "auto", borderRadius: 20, maxHeight: "calc(100vh - 120px)" }}>
+                {/* *** CHANGE: replaced headerSlot={...} with onAddToDashboard and isInDashboard props *** */}
                 <SearchPanel
                   asset={floatingAsset}
                   onClose={() => setFloatingAsset(null)}
                   navbarRef={navbarRef}
                   inline={true}
-                  headerSlot={
-                    <div style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "10px 18px 0",
-                    }}>
-                      {isInDashboard ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 10, color: "#00d282", background: "rgba(0,210,130,0.10)", border: "1px solid rgba(0,210,130,0.25)", borderRadius: 6, padding: "5px 12px" }}>
-                          <span>✓</span><span>IN DASHBOARD</span>
-                        </div>
-                      ) : (
-                        <button
-                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToDashboard(floatingAsset); }}
-                          style={{ background: "rgba(0,180,255,0.12)", border: "1px solid rgba(0,180,255,0.35)", borderRadius: 6, color: "#00d4ff", fontFamily: mono, fontSize: 10, padding: "5px 14px", cursor: "pointer", letterSpacing: "0.06em", transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6 }}
-                          onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.22)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.60)"; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.35)"; }}
-                        >
-                          <span style={{ fontSize: 13 }}>+</span>
-                          <span>ADD TO DASHBOARD</span>
-                        </button>
-                      )}
-                      <button
-                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setFloatingAsset(null); }}
-                        style={{ background: "rgba(10,12,20,0.75)", border: "1px solid rgba(0,180,255,0.20)", borderRadius: 7, color: "rgba(180,210,255,0.55)", fontFamily: mono, fontSize: 11, padding: "5px 14px", cursor: "pointer", backdropFilter: "blur(10px)", transition: "all 0.15s", letterSpacing: "0.05em" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,180,255,0.12)"; e.currentTarget.style.color = "#00d4ff"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.40)"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(10,12,20,0.75)"; e.currentTarget.style.color = "rgba(180,210,255,0.55)"; e.currentTarget.style.borderColor = "rgba(0,180,255,0.20)"; }}
-                      >
-                        ✕ close
-                      </button>
-                    </div>
-                  }
+                  onAddToDashboard={() => handleAddToDashboard(floatingAsset)}
+                  isInDashboard={isInDashboard}
                 />
               </div>
             </div>

@@ -537,15 +537,18 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 // ─── Main SearchPanel ─────────────────────────────────────────────────────────
 
+// *** CHANGE 1: replaced headerSlot with onAddToDashboard and isInDashboard ***
 export interface SearchPanelProps {
   asset: AssetData;
   onClose: () => void;
   navbarRef: RefObject<HTMLElement | null>;
   inline?: boolean;
-  headerSlot?: React.ReactNode;
+  onAddToDashboard?: () => void;
+  isInDashboard?: boolean;
 }
 
-export function SearchPanel({ asset, onClose, navbarRef, inline = false, headerSlot }: SearchPanelProps) {
+// *** CHANGE 2: updated destructuring to match new props ***
+export function SearchPanel({ asset, onClose, navbarRef, inline = false, onAddToDashboard, isInDashboard }: SearchPanelProps) {
   const [range, setRange] = useState<ChartRange>("5D");
   const [chartData, setChartData] = useState<ChartPoint[]>(() => genChart(asset, "5D"));
   const panelRef = useRef<HTMLDivElement>(null);
@@ -556,6 +559,8 @@ export function SearchPanel({ asset, onClose, navbarRef, inline = false, headerS
   const fmt = (v: number) =>
     asset.type === "CRYPTO" ? `$${Number(v).toLocaleString()}` : `$${Number(v).toFixed(2)}`;
   const volAccent = asset.volRatio > 1.3 ? "#ff9040" : asset.volRatio > 1.1 ? "#ffb800" : undefined;
+
+  const mono = "'JetBrains Mono', monospace";
 
   useEffect(() => {
     let cancelled = false;
@@ -639,6 +644,81 @@ export function SearchPanel({ asset, onClose, navbarRef, inline = false, headerS
           top: 0,
           zIndex: 1,
         }} />
+
+        {/* *** CHANGE 3: replaced {headerSlot} with buttons rendered directly inside the panel,
+            only shown in logged-in inline mode when onAddToDashboard is provided *** */}
+        {inline && onAddToDashboard !== undefined && (
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 18px 4px",
+            borderBottom: "1px solid rgba(0,180,255,0.07)",
+          }}>
+            {isInDashboard ? (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                fontFamily: mono, fontSize: 10,
+                color: "#00d282",
+                background: "rgba(0,210,130,0.08)",
+                border: "1px solid rgba(0,210,130,0.22)",
+                borderRadius: 7, padding: "5px 12px",
+              }}>
+                <span>✓</span>
+                <span>IN DASHBOARD</span>
+              </div>
+            ) : (
+              <button
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onAddToDashboard(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  fontFamily: mono, fontSize: 10,
+                  color: "#00d4ff",
+                  background: "rgba(0,180,255,0.10)",
+                  border: "1px solid rgba(0,180,255,0.30)",
+                  borderRadius: 7, padding: "5px 14px",
+                  cursor: "pointer", letterSpacing: "0.06em",
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "rgba(0,180,255,0.20)";
+                  e.currentTarget.style.borderColor = "rgba(0,180,255,0.55)";
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "rgba(0,180,255,0.10)";
+                  e.currentTarget.style.borderColor = "rgba(0,180,255,0.30)";
+                }}
+              >
+                <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+                <span>ADD TO DASHBOARD</span>
+              </button>
+            )}
+            <button
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
+              style={{
+                fontFamily: mono, fontSize: 10,
+                color: "rgba(180,210,255,0.45)",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(180,210,255,0.12)",
+                borderRadius: 7, padding: "5px 14px",
+                cursor: "pointer", letterSpacing: "0.06em",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = "rgba(255,80,100,0.10)";
+                e.currentTarget.style.color = "#ff5064";
+                e.currentTarget.style.borderColor = "rgba(255,80,100,0.25)";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                e.currentTarget.style.color = "rgba(180,210,255,0.45)";
+                e.currentTarget.style.borderColor = "rgba(180,210,255,0.12)";
+              }}
+            >
+              ✕ CLOSE
+            </button>
+          </div>
+        )}
 
         <div style={{ padding: "14px 18px 16px" }}>
 

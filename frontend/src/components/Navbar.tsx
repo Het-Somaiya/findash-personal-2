@@ -36,6 +36,9 @@ const serif = "'DM Serif Display', serif";
 const sans  = "'DM Sans', sans-serif";
 const mono  = "'JetBrains Mono', monospace";
 
+// *** CHANGE: added PANEL_WIDTH constant so search bar and popup share the same width ***
+const PANEL_WIDTH = 640;
+
 export function Navbar() {
   const navbarRef = useRef<HTMLDivElement>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -128,10 +131,14 @@ export function Navbar() {
         ].join(", "),
       }} />
 
-      {/* Logged-out search result — inline panel under search bar */}
+      {/* Logged-out search result — positioned to align exactly with search bar */}
       {selectedAsset && !user && (
         <div style={{
-          position: "fixed", top: 72, left: "50%", transform: "translateX(-50%)",
+          position: "fixed",
+          top: 72,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: PANEL_WIDTH,
           zIndex: 300,
         }}>
           <SearchPanel
@@ -147,7 +154,7 @@ export function Navbar() {
         style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
           padding: "0 40px", height: 72,
-          display: "flex", alignItems: "center", gap: 28,
+          display: "flex", alignItems: "center",
           background: scrolled ? "rgba(6,8,14,0.88)" : "transparent",
           backdropFilter: scrolled ? "blur(3px)" : "none",
           WebkitBackdropFilter: scrolled ? "blur(3px)" : "none",
@@ -161,8 +168,15 @@ export function Navbar() {
           </span>
         </div>
 
-        {/* Search */}
-        <div style={{ flex: 1, maxWidth: 640, margin: "0 auto", position: "relative" }}>
+        {/* *** CHANGE: search bar is now absolutely centered in the viewport so its
+            edges align perfectly with the popup which is also centered on the viewport *** */}
+        <div style={{
+          position: "absolute",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: PANEL_WIDTH,
+          maxWidth: "calc(100vw - 320px)",
+        }}>
           <span style={{
             position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)",
             color: "rgba(0,180,255,0.45)", fontSize: 14, pointerEvents: "none",
@@ -253,8 +267,8 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Right nav */}
-        <div style={{ display: "flex", gap: 22, alignItems: "center", flexShrink: 0 }}>
+        {/* Right nav — pushed to the right via marginLeft auto */}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 22, alignItems: "center", flexShrink: 0 }}>
           {["Markets", "Strategies"].map(l => (
             <span
               key={l}
